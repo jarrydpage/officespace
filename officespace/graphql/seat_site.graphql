@@ -1,0 +1,12 @@
+query SeatSite($ids: [ID!]!) {
+	seats(ids: $ids) {
+		id
+		floorId
+		floor {
+			id
+			site {
+				id
+			}
+		}
+	}
+}

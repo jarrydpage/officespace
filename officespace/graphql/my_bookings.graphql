@@ -1,0 +1,21 @@
+query MyBookings(
+	$periodEnd: TimeZoneAgnosticDate
+	$periodStart: TimeZoneAgnosticDate
+	$notRejected: Boolean
+) {
+	currentUser {
+		id
+		bookings(
+			periodEnd: $periodEnd
+			periodStart: $periodStart
+			notRejected: $notRejected
+		) {
+			__typename
+			... on SeatOpenBooking {
+				id
+				isCanceled
+				localCheckInTime
+			}
+		}
+	}
+}

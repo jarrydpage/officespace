@@ -1,0 +1,55 @@
+mutation CreateBookingSeries(
+	$atTime: TimeZoneAgnosticDate
+	$baseBookingId: ID
+	$employeeId: ID!
+	$note: String
+	$overlappingBookingsToVacate: [ID!]
+	$schedule: [SeatBookingSeriesItemType!]!
+	$seatId: ID!
+	$suggestionAttribution: SuggestionAttributionInput
+	$waiveConfirmation: Boolean
+	$visitId: ID
+) {
+	createSeatBookingSeries(
+		baseBookingId: $baseBookingId
+		employeeId: $employeeId
+		note: $note
+		overlappingBookingsToVacate: $overlappingBookingsToVacate
+		schedule: $schedule
+		seatId: $seatId
+		suggestionAttribution: $suggestionAttribution
+		waiveConfirmation: $waiveConfirmation
+		visitId: $visitId
+	) {
+		affectedSeats(atTime: $atTime) {
+			id
+			vacant
+			label
+			timedIdentifier
+			floor {
+				id
+				label
+			}
+		}
+		seriesMaster {
+			id
+			key
+			status
+			localCheckInTime
+			localCheckOutScheduled
+			requiresConfirmation
+		}
+		bookings {
+			id
+			key
+			status
+			localCheckInTime
+			localCheckOutScheduled
+		}
+		errors {
+			code
+			fieldName
+			message
+		}
+	}
+}

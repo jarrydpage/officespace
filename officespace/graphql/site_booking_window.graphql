@@ -1,0 +1,14 @@
+query SiteBookingWindow($ids: [ID!]!) {
+	sites(ids: $ids) {
+		id
+		deskBookableFrom
+		deskBookableUntil
+		operatingDaysConfig {
+			calendarStartDay
+			operatingHours {
+				startAt
+				endAt
+			}
+		}
+	}
+}

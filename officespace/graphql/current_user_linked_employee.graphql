@@ -1,0 +1,8 @@
+query CurrentUserLinkedEmployee {
+	currentUser {
+		id
+		linkedEmployee {
+			id
+		}
+	}
+}
