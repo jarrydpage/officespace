@@ -1,0 +1,93 @@
+trigger: none
+pr: none
+
+# 6:00 PM AWST is 10:00 UTC.
+schedules:
+- cron: '0 10 * * *'
+  displayName: Daily 6:00 PM AWST
+  branches:
+    include:
+    - main
+  always: true
+  batch: true
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+# Replace these with your Azure resource names.
+# The Azure service connection needs Key Vault secret get/list/set access.
+# AzureKeyVault exposes pipeline variables using the Key Vault secret name.
+# run.py expects OFFICESPACE_MOBILE_BEARER, so the booking step maps the fixed
+# Key Vault secret name to that env var explicitly.
+- name: PYTHON_VERSION
+  value: '3.12'
+- name: AZURE_SERVICE_CONNECTION
+  value: arm-coreservices-prod
+- name: KEY_VAULT_NAME
+  value: zaekvpcs0001
+- name: OFFICESPACE_MODE
+  value: book
+- name: OFFICESPACE_AUTH_CONFIG_FILE
+  value: $(Agent.TempDirectory)/officespace-auth.json
+
+steps:
+- checkout: self
+
+- task: UsePythonVersion@0
+  displayName: Use Python $(PYTHON_VERSION)
+  inputs:
+    versionSpec: $(PYTHON_VERSION)
+
+- bash: |
+    set -euo pipefail
+
+    python -m pip install --upgrade pip
+    python -m pip install -r requirements.txt
+  displayName: Install Python dependencies
+
+- task: AzureKeyVault@2
+  displayName: Load OfficeSpace secrets from Key Vault
+  inputs:
+    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+    KeyVaultName: $(KEY_VAULT_NAME)
+    SecretsFilter: 'officespace-mobile-bearer'
+
+- bash: |
+    set -euo pipefail
+
+    python run.py
+
+    refreshed_mobile_bearer="$(jq -r '.mobileBearerToken // env.OFFICESPACE_MOBILE_BEARER' "$OFFICESPACE_AUTH_CONFIG_FILE" 2>/dev/null || printf '%s' "$OFFICESPACE_MOBILE_BEARER")"
+
+    echo "##vso[task.setvariable variable=OFFICESPACE_ORIGINAL_MOBILE_BEARER;issecret=true]$OFFICESPACE_MOBILE_BEARER"
+    echo "##vso[task.setvariable variable=OFFICESPACE_REFRESHED_MOBILE_BEARER;issecret=true]$refreshed_mobile_bearer"
+  displayName: Book OfficeSpace desk
+  env:
+    OFFICESPACE_MOBILE_BEARER: $(officespace-mobile-bearer)
+
+- task: AzureCLI@2
+  displayName: Persist refreshed bearer token to Key Vault
+  inputs:
+    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      set -euo pipefail
+
+      if [[ -z "$OFFICESPACE_REFRESHED_MOBILE_BEARER" ]]; then
+        echo "Refreshed mobile bearer token was not emitted after running run.py."
+        exit 1
+      fi
+
+      if [[ "$OFFICESPACE_REFRESHED_MOBILE_BEARER" != "$OFFICESPACE_ORIGINAL_MOBILE_BEARER" ]]; then
+        az keyvault secret set \
+          --vault-name "$KEY_VAULT_NAME" \
+          --name "officespace-mobile-bearer" \
+          --value "$OFFICESPACE_REFRESHED_MOBILE_BEARER" \
+          --only-show-errors \
+          1>/dev/null
+      fi
+  env:
+    OFFICESPACE_ORIGINAL_MOBILE_BEARER: $(OFFICESPACE_ORIGINAL_MOBILE_BEARER)
+    OFFICESPACE_REFRESHED_MOBILE_BEARER: $(OFFICESPACE_REFRESHED_MOBILE_BEARER)
