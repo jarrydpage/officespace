@@ -1,10 +1,10 @@
 trigger: none
 pr: none
 
-# 6:00 PM AWST is 10:00 UTC.
+# 11:01 PM AWST is 15:01 UTC.
 schedules:
-- cron: '0 10 * * *'
-  displayName: Daily 6:00 PM AWST
+- cron: '1 15 * * *'
+  displayName: Daily 11:01 PM AWST
   branches:
     include:
     - main
