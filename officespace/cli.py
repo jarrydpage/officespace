@@ -7,10 +7,9 @@ import sys
 
 import click
 
-from .auth import AuthConfigurationError, AuthInputs
-from .client import OfficeSpaceDeskBooker
+from .auth import AuthConfigurationError, AuthInputs, OfficeSpaceAuthContext
+from .booker import OfficeSpaceDeskBooker
 from .helpers import parse_schedule_arg
-from .output import format_booking_summary
 
 
 logger = logging.getLogger(__name__)
@@ -35,11 +34,21 @@ def configure_logging() -> None:
 
 def resolve_booker(
     auth: CliAuthOptions,
+    *,
+    floor_id: str,
+    seat_id: str,
+    site_id: str | None = None,
 ) -> OfficeSpaceDeskBooker:
     try:
-        return OfficeSpaceDeskBooker.from_auth_inputs(
+        auth_context = OfficeSpaceAuthContext.from_auth_inputs(
             auth.inputs,
             timeout_seconds=auth.timeout_seconds,
+        )
+        return OfficeSpaceDeskBooker(
+            auth_context=auth_context,
+            floor_id=floor_id,
+            seat_id=seat_id,
+            site_id=site_id,
         )
     except AuthConfigurationError as exc:
         raise click.UsageError(str(exc)) from exc
@@ -110,10 +119,16 @@ def cli(
 @cli.command("bearer")
 @pass_cli_auth
 def bearer_command(auth: CliAuthOptions) -> int:
-    booker = resolve_booker(auth)
+    try:
+        auth_context = OfficeSpaceAuthContext.from_auth_inputs(
+            auth.inputs,
+            timeout_seconds=auth.timeout_seconds,
+        )
+    except AuthConfigurationError as exc:
+        raise click.UsageError(str(exc)) from exc
     logger.info(
         json.dumps(
-            {"mobileBearerToken": booker.ensure_mobile_bearer_token()},
+            {"mobileBearerToken": auth_context.ensure_mobile_bearer_token()},
             indent=2,
             sort_keys=True,
         )
@@ -124,10 +139,16 @@ def bearer_command(auth: CliAuthOptions) -> int:
 @cli.command("session")
 @pass_cli_auth
 def session_command(auth: CliAuthOptions) -> int:
-    booker = resolve_booker(auth)
+    try:
+        auth_context = OfficeSpaceAuthContext.from_auth_inputs(
+            auth.inputs,
+            timeout_seconds=auth.timeout_seconds,
+        )
+    except AuthConfigurationError as exc:
+        raise click.UsageError(str(exc)) from exc
     logger.info(
         json.dumps(
-            {"sessionCookie": booker.ensure_session_cookie()},
+            {"sessionCookie": auth_context.ensure_session_cookie()},
             indent=2,
             sort_keys=True,
         )
@@ -165,10 +186,6 @@ def session_command(auth: CliAuthOptions) -> int:
     help="Optional local check-out time override in HH:MM format.",
 )
 @click.option(
-    "--csrf-token",
-    help="Optional CSRF token override. If omitted, the token is fetched from the seat page.",
-)
-@click.option(
     "--dry-run",
     is_flag=True,
     help="Print the prepared GraphQL request without sending it.",
@@ -177,14 +194,13 @@ def session_command(auth: CliAuthOptions) -> int:
 def book_command(
     auth: CliAuthOptions,
     employee_id: str | None,
-    floor_id: str | None,
-    seat_id: str | None,
+    floor_id: str,
+    seat_id: str,
     site_id: str | None,
     booking_date: str | None,
     schedule: str | None,
     check_in: str | None,
     check_out: str | None,
-    csrf_token: str | None,
     dry_run: bool,
 ) -> int:
     if bool(booking_date) == bool(schedule):
@@ -192,28 +208,29 @@ def book_command(
     if bool(check_in) != bool(check_out):
         raise click.UsageError("provide both --check-in and --check-out together")
 
-    booker = resolve_booker(auth)
+    booker = resolve_booker(
+        auth,
+        floor_id=floor_id,
+        seat_id=seat_id,
+        site_id=site_id,
+    )
 
     parsed_schedule = parse_schedule_arg(schedule)
 
     prepared = booker.prepare_booking_request(
         employee_id=employee_id,
-        floor_id=floor_id,
-        seat_id=seat_id,
-        site_id=site_id,
         booking_date=booking_date,
         schedule=parsed_schedule,
         check_in=check_in,
         check_out=check_out,
-        csrf_token=csrf_token,
     )
 
     if dry_run:
         logger.info("%s", prepared)
         return 0
 
-    result = booker.send_booking_request(prepared)
-    logger.info(format_booking_summary(result, prepared))
+    booker.send_booking_request(prepared)
+
     return 0
 
 

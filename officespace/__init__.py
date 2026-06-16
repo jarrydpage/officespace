@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-from .auth import decode_jwt_payload, token_is_expired
-from .client import OfficeSpaceDeskBooker
+from .auth import AuthConfigurationError, AuthInputs, OfficeSpaceAuthContext
+from .booker import OfficeSpaceDeskBooker
+from .client import OfficeSpaceClient
 from .cli import cli, main
 from .config import BookingConfig, RunConfig, RunConfigurationError, load_run_config, parse_run_config
 from .helpers import derive_subdomain, extract_qr_link_details, parse_schedule_arg
 from .models import PreparedBookingRequest, SiteBookingWindow
-from .output import format_booking_summary
+from .tokens import decode_jwt_payload, token_is_expired
 
 
 __all__ = [
+    "AuthConfigurationError",
+    "AuthInputs",
     "BookingConfig",
+    "OfficeSpaceAuthContext",
+    "OfficeSpaceClient",
     "OfficeSpaceDeskBooker",
     "PreparedBookingRequest",
     "RunConfig",
@@ -25,5 +30,4 @@ __all__ = [
     "main",
     "parse_schedule_arg",
     "parse_run_config",
-    "format_booking_summary",
 ]

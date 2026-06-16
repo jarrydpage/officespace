@@ -1,10 +1,10 @@
 trigger: none
 pr: none
 
-# 11:01 PM AWST is 15:01 UTC.
+# Azure Pipelines schedules use UTC; AWST stays at :01 because it is UTC+8.
 schedules:
-- cron: '1 15 * * *'
-  displayName: Daily 11:01 PM AWST
+- cron: '1 * * * *'
+  displayName: Hourly at :01
   branches:
     include:
     - main
