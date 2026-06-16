@@ -27,55 +27,8 @@ class AuthInputs:
     auth_config_file: str | None
 
 
-@dataclass(frozen=True)
-class _ResolvedAuthContext:
-    subdomain: str
-    qr_token: str | None
-
-
 class AuthConfigurationError(ValueError):
     pass
-
-
-def _resolve_auth_context(auth: AuthInputs) -> _ResolvedAuthContext:
-    subdomain = auth.subdomain
-    qr_token = auth.qr_token
-    qr_link = auth.qr_link
-
-    if (
-        not auth.session_cookie
-        and not auth.mobile_bearer_token
-        and not qr_token
-        and not qr_link
-        and not auth.auth_config_file
-    ):
-        raise AuthConfigurationError(
-            "provide at least one auth input: session_cookie, mobile_bearer_token, "
-            "qr_token, qr_link, or auth_config_file"
-        )
-
-    if qr_token and qr_token.startswith("officespacemobile://"):
-        qr_link = qr_token
-        qr_token = None
-
-    if qr_link:
-        qr_domain, qr_link_token = extract_qr_link_details(qr_link)
-        qr_token = qr_token or qr_link_token
-        if subdomain and qr_domain:
-            expected_domain = f"{subdomain}.officespacesoftware.com"
-            if qr_domain != expected_domain:
-                raise AuthConfigurationError(
-                    f"QR link domain {qr_domain} does not match subdomain {subdomain}."
-                )
-        elif not subdomain and qr_domain:
-            subdomain = derive_subdomain(qr_domain)
-
-    if not subdomain:
-        raise AuthConfigurationError(
-            "OfficeSpace subdomain is required, either directly or via qr_link."
-        )
-
-    return _ResolvedAuthContext(subdomain=subdomain, qr_token=qr_token)
 
 
 class OfficeSpaceAuthContext:
@@ -106,13 +59,49 @@ class OfficeSpaceAuthContext:
         timeout_seconds: int = 30,
         user_agent: str = DEFAULT_USER_AGENT,
     ) -> Self:
-        resolved_auth = _resolve_auth_context(auth)
+        subdomain = auth.subdomain
+        qr_token = auth.qr_token
+        qr_link = auth.qr_link
+
+        if (
+            not auth.session_cookie
+            and not auth.mobile_bearer_token
+            and not qr_token
+            and not qr_link
+            and not auth.auth_config_file
+        ):
+            raise AuthConfigurationError(
+                "provide at least one auth input: session_cookie, mobile_bearer_token, "
+                "qr_token, qr_link, or auth_config_file"
+            )
+
+        if qr_token and qr_token.startswith("officespacemobile://"):
+            qr_link = qr_token
+            qr_token = None
+
+        if qr_link:
+            qr_domain, qr_link_token = extract_qr_link_details(qr_link)
+            qr_token = qr_token or qr_link_token
+            if subdomain and qr_domain:
+                expected_domain = f"{subdomain}.officespacesoftware.com"
+                if qr_domain != expected_domain:
+                    raise AuthConfigurationError(
+                        f"QR link domain {qr_domain} does not match subdomain {subdomain}."
+                    )
+            elif not subdomain and qr_domain:
+                subdomain = derive_subdomain(qr_domain)
+
+        if not subdomain:
+            raise AuthConfigurationError(
+                "OfficeSpace subdomain is required, either directly or via qr_link."
+            )
+
         return cls(
-            subdomain=resolved_auth.subdomain,
+            subdomain=subdomain,
             session_cookie=auth.session_cookie,
             auth_config_file=auth.auth_config_file,
             mobile_bearer_token=auth.mobile_bearer_token,
-            qr_token=resolved_auth.qr_token,
+            qr_token=qr_token,
             timeout_seconds=timeout_seconds,
             user_agent=user_agent,
         )
