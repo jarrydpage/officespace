@@ -10,6 +10,7 @@ import click
 from .auth import AuthConfigurationError, AuthInputs, OfficeSpaceAuthContext
 from .booker import OfficeSpaceDeskBooker
 from .helpers import parse_schedule_arg
+from .logging import configure_logging
 
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,6 @@ class CliAuthOptions:
 
 
 pass_cli_auth = click.make_pass_decorator(CliAuthOptions)
-
-
-def configure_logging() -> None:
-    root_logger = logging.getLogger()
-    if root_logger.handlers:
-        return
-
-    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
-
-
 def resolve_booker(
     auth: CliAuthOptions,
     *,

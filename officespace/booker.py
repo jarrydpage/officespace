@@ -71,6 +71,7 @@ class OfficeSpaceDeskBooker:
             session_cookie_provider=self.auth.ensure_session_cookie,
             csrf_token=csrf_token,
         )
+        logger.info("Authenticated - session cookie and CSRF token acquired.")
 
     def prepare_booking_request(
         self,
@@ -290,6 +291,7 @@ class OfficeSpaceDeskBooker:
         )
 
         self.site_booking_window = window
+        logger.info("Site allows booking through %s.", window.bookable_until.isoformat())
         return window
 
     def fetch_site_id(self) -> str:

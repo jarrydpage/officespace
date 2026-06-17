@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime
 import json
@@ -8,7 +9,7 @@ from typing import Any, TypeVar
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
 from .constants import OFFICESPACE_LOCAL_DATETIME_FORMAT
-from .helpers import day_index_for_date, format_date_label, parse_local_datetime
+from .helpers import day_index_for_date, parse_local_datetime
 
 
 class GraphQLModel(BaseModel):
@@ -36,6 +37,13 @@ def graphql_errors_to_json(errors: list[GraphQLOperationError]) -> str:
         indent=2,
         sort_keys=True,
     )
+
+
+def format_booking_status_date(value: str) -> str:
+    try:
+        return f"{value} ({date.fromisoformat(value).strftime('%A')})"
+    except ValueError:
+        return value
 
 
 def parse_graphql_operations(payload: Any, *, error_prefix: str) -> list[GraphQLOperationEnvelope]:
@@ -211,51 +219,51 @@ class SeatBookingMutationResult(GraphQLModel):
         payload_dates = prepared.payload_schedule_dates()
         requested_dates = prepared.requested_dates or payload_dates
         scheduled_dates = prepared.scheduled_dates or payload_dates
-        skipped_existing_dates = prepared.skipped_existing_dates
+        skipped_existing_dates = set(prepared.skipped_existing_dates)
 
-        booked_dates = {booking.booking_date for booking in self.bookings if booking.booking_date}
+        booked_counts = Counter(
+            booking.booking_date for booking in self.bookings if booking.booking_date
+        )
+        booked_dates = set(booked_counts)
         failed_dates = [
             requested_date for requested_date in scheduled_dates if requested_date not in booked_dates
         ]
 
-        if skipped_existing_dates:
-            lines = [
-                f"Booked {len(self.bookings)} new date(s) of {len(requested_dates)} requested date(s)."
-            ]
-        else:
-            lines = [f"Booked {len(self.bookings)} of {len(requested_dates)} requested date(s)."]
-
-        if self.seat_label:
-            desk_line = f"Desk: {self.seat_label}"
-            if self.floor_label:
-                desk_line += f" • {self.floor_label}"
-            lines.append(desk_line)
-
-        if self.bookings:
-            lines.append("Booked:")
-            lines.extend(booking.summary_line for booking in self.bookings)
-
-        if skipped_existing_dates:
-            lines.append("Already booked:")
-            for skipped_existing_date in skipped_existing_dates:
-                lines.append(f"- {format_date_label(skipped_existing_date)}")
-
+        lines: list[str] = []
+        issue_count = 0
+        failed_date_messages: dict[str, str] = {}
         if failed_dates:
-            lines.append("Unavailable:")
             shared_error_message = (
                 self.error_messages[0] if self.error_messages else "This desk is not available."
             )
             if len(self.error_messages) == len(failed_dates):
-                for failed_date, error_message in zip(failed_dates, self.error_messages):
-                    lines.append(f"- {format_date_label(failed_date)}: {error_message}")
+                failed_date_messages = dict(zip(failed_dates, self.error_messages))
             else:
-                for failed_date in failed_dates:
-                    lines.append(f"- {format_date_label(failed_date)}: {shared_error_message}")
+                failed_date_messages = {
+                    failed_date: shared_error_message for failed_date in failed_dates
+                }
+
+        for requested_date in requested_dates:
+            date_label = format_booking_status_date(requested_date)
+            if requested_date in skipped_existing_dates:
+                lines.append(f"{date_label}: already booked by you - skipping")
+                continue
+
+            booked_count = booked_counts.get(requested_date, 0)
+            if booked_count:
+                lines.append(f"{date_label}: booked ({booked_count} booking record(s))")
+                continue
+
+            failed_message = failed_date_messages.get(requested_date)
+            if failed_message:
+                lines.append(f"{date_label}: {failed_message}")
+                issue_count += 1
 
         if self.error_messages and not failed_dates and not self.bookings and not skipped_existing_dates:
-            lines.append("Errors:")
-            for error_message in self.error_messages:
-                lines.append(f"- {error_message}")
+            issue_count += len(self.error_messages)
+            lines.extend(self.error_messages)
+
+        lines.append(f"Done. {len(requested_dates)} date(s) processed, {issue_count} issue(s).")
 
         return lines
 

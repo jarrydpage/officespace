@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import json
 from http import cookiejar
+import logging
 from pathlib import Path
 from typing import Any, Self
 from urllib import error, request
@@ -15,6 +17,9 @@ from .constants import (
 )
 from .helpers import derive_subdomain, extract_qr_link_details
 from .tokens import decode_jwt_payload, token_is_expired
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -139,23 +144,41 @@ class OfficeSpaceAuthContext:
         return self.session_cookie
 
     def ensure_mobile_bearer_token(self) -> str:
-        if self.mobile_bearer_token and not token_is_expired(self.mobile_bearer_token):
-            return self.mobile_bearer_token
+        token = self.mobile_bearer_token
+        if token and token_is_expired(token):
+            token = None
 
-        cached_token = self.load_cached_mobile_bearer_token()
-        if cached_token:
-            self.mobile_bearer_token = cached_token
-            return cached_token
+        if not token:
+            token = self.load_cached_mobile_bearer_token()
 
-        if not self.qr_token:
-            raise RuntimeError(
-                "No valid cached mobile bearer token found. Set OFFICESPACE_QR_TOKEN "
-                "for the first run or to refresh the cache."
-            )
+        if not token:
+            if not self.qr_token:
+                raise RuntimeError(
+                    "No valid cached mobile bearer token found. Set OFFICESPACE_QR_TOKEN "
+                    "for the first run or to refresh the cache."
+                )
 
-        self.mobile_bearer_token = self.exchange_qr_token_for_mobile_bearer()
-        self.save_cached_mobile_bearer_token(self.mobile_bearer_token)
-        return self.mobile_bearer_token
+            token = self.exchange_qr_token_for_mobile_bearer()
+            self.save_cached_mobile_bearer_token(token)
+
+        self.mobile_bearer_token = token
+
+        exp = decode_jwt_payload(token).get("exp")
+        if not isinstance(exp, (int, float)):
+            logger.info("Bearer token acquired.")
+            return token
+
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+        remaining_days = max(
+            0,
+            int((expires_at - datetime.now(timezone.utc)).total_seconds() // 86400),
+        )
+        logger.info(
+            "Bearer token valid until %s (%sd left).",
+            expires_at.isoformat(),
+            remaining_days,
+        )
+        return token
 
     def load_cached_mobile_bearer_token(self) -> str | None:
         if not self.auth_config_path or not self.auth_config_path.exists():

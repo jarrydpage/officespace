@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-import sys
 
 from officespace import (
     AuthConfigurationError,
@@ -12,6 +11,7 @@ from officespace import (
     RunConfigurationError,
     load_run_config,
 )
+from officespace.logging import configure_logging
 
 
 CONFIG_PATH = Path(__file__).with_name("run.toml")
@@ -27,9 +27,14 @@ if mode not in {"dry-run", "book"}:
 
 
 try:
-    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+    configure_logging()
     config = load_run_config(CONFIG_PATH)
     booking = config.booking
+    logger.info(
+        "Desk booking run started for floor %s seat %s.",
+        booking.floor_id,
+        booking.seat_id,
+    )
     auth_context = OfficeSpaceAuthContext.from_auth_inputs(
         config.auth_inputs,
         timeout_seconds=config.timeout_seconds,
