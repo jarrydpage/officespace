@@ -43,6 +43,13 @@ steps:
 - bash: |
     set -euo pipefail
 
+    sudo apt-get update
+    sudo apt-get install -y libzbar0
+  displayName: Install system dependencies
+
+- bash: |
+    set -euo pipefail
+
     python -m pip install --upgrade pip
     python -m pip install -r requirements.txt
   displayName: Install Python dependencies
