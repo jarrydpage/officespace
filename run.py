@@ -8,8 +8,8 @@ from officespace import (
     AuthConfigurationError,
     OfficeSpaceAuthContext,
     OfficeSpaceDeskBooker,
+    RunConfig,
     RunConfigurationError,
-    load_run_config,
 )
 from officespace.logging import configure_logging
 
@@ -28,7 +28,7 @@ if mode not in {"dry-run", "book"}:
 
 try:
     configure_logging()
-    config = load_run_config(CONFIG_PATH)
+    config = RunConfig.load(CONFIG_PATH)
     booking = config.booking
     logger.info(
         "Desk booking run started for floor %s seat %s.",
