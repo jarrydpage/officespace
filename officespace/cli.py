@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
@@ -23,7 +23,50 @@ class CliAuthOptions:
     timeout_seconds: int
 
 
-pass_cli_auth = click.make_pass_decorator(CliAuthOptions)
+def auth_options(command: click.Callable) -> click.Callable:
+    command = click.option(
+        "--timeout-seconds",
+        default=30,
+        show_default=True,
+        type=int,
+        help="HTTP timeout in seconds.",
+    )(command)
+    command = click.option(
+        "--auth-config-file",
+        envvar="OFFICESPACE_AUTH_CONFIG_FILE",
+        help="JSON file used to cache and reload the auth token.",
+    )(command)
+    command = click.option(
+        "--auth-token",
+        envvar="OFFICESPACE_AUTH_TOKEN",
+        help="Existing OfficeSpace auth token loaded directly instead of using the auth cache.",
+    )(command)
+    return click.option(
+        "--domain",
+        envvar="OFFICESPACE_DOMAIN",
+        help="OfficeSpace domain, for example 'inpex.officespacesoftware.com'.",
+    )(command)
+
+
+def build_cli_auth_options(
+    *,
+    domain: str | None,
+    auth_token: str | None,
+    auth_config_file: str | None,
+    timeout_seconds: int,
+    qr_image_file: str | None = None,
+) -> CliAuthOptions:
+    resolved_auth_config_file = auth_config_file or str(Path("auth.json"))
+
+    return CliAuthOptions(
+        inputs=AuthInputs(
+            domain=domain,
+            auth_token=auth_token,
+            qr_image_file=qr_image_file,
+            auth_config_file=resolved_auth_config_file,
+        ),
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def resolve_auth_context(auth: CliAuthOptions) -> OfficeSpaceAuthContext:
@@ -53,52 +96,24 @@ def resolve_booker(
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
-@click.option(
-    "--domain",
-    envvar="OFFICESPACE_DOMAIN",
-    help="OfficeSpace domain, for example 'inpex.officespacesoftware.com'.",
-)
-@click.option(
-    "--auth-token",
-    envvar="OFFICESPACE_AUTH_TOKEN",
-    help="Existing OfficeSpace auth token loaded directly instead of using the auth cache.",
-)
-@click.option(
-    "--auth-config-file",
-    envvar="OFFICESPACE_AUTH_CONFIG_FILE",
-    help="JSON file used to cache and reload the auth token.",
-)
-@click.option(
-    "--timeout-seconds",
-    default=30,
-    show_default=True,
-    type=int,
-    help="HTTP timeout in seconds.",
-)
-@click.pass_context
-def cli(
-    ctx: click.Context,
+def cli() -> None:
+    pass
+
+
+@cli.command("token")
+@auth_options
+def token_command(
     domain: str | None,
     auth_token: str | None,
     auth_config_file: str | None,
     timeout_seconds: int,
-) -> None:
-    resolved_auth_config_file = auth_config_file or str(Path("auth.json"))
-
-    ctx.obj = CliAuthOptions(
-        inputs=AuthInputs(
-            domain=domain,
-            auth_token=auth_token,
-            qr_image_file=None,
-            auth_config_file=resolved_auth_config_file,
-        ),
+) -> int:
+    auth = build_cli_auth_options(
+        domain=domain,
+        auth_token=auth_token,
+        auth_config_file=auth_config_file,
         timeout_seconds=timeout_seconds,
     )
-
-
-@cli.command("token")
-@pass_cli_auth
-def token_command(auth: CliAuthOptions) -> int:
     auth_context = resolve_auth_context(auth)
     logger.info(
         json.dumps(
@@ -111,25 +126,33 @@ def token_command(auth: CliAuthOptions) -> int:
 
 
 @cli.command("register")
+@auth_options
 @click.option(
     "--qr-image-file",
     envvar="OFFICESPACE_QR_IMAGE_FILE",
     help="PNG image file containing the OfficeSpace QR code used for auth registration.",
 )
-@pass_cli_auth
-def register_command(auth: CliAuthOptions, qr_image_file: str | None) -> int:
+def register_command(
+    domain: str | None,
+    auth_token: str | None,
+    auth_config_file: str | None,
+    timeout_seconds: int,
+    qr_image_file: str | None,
+) -> int:
     resolved_qr_image_file = qr_image_file
     if resolved_qr_image_file is None:
         default_qr_image_path = Path("qr.png")
         if default_qr_image_path.exists():
             resolved_qr_image_file = str(default_qr_image_path)
 
-    auth_context = resolve_auth_context(
-        CliAuthOptions(
-            inputs=replace(auth.inputs, qr_image_file=resolved_qr_image_file),
-            timeout_seconds=auth.timeout_seconds,
-        )
+    auth = build_cli_auth_options(
+        domain=domain,
+        auth_token=auth_token,
+        auth_config_file=auth_config_file,
+        timeout_seconds=timeout_seconds,
+        qr_image_file=resolved_qr_image_file,
     )
+    auth_context = resolve_auth_context(auth)
     auth_context.register_auth_token()
 
     result = {
@@ -176,9 +199,8 @@ def register_command(auth: CliAuthOptions, qr_image_file: str | None) -> int:
     is_flag=True,
     help="Print the prepared GraphQL request without sending it.",
 )
-@pass_cli_auth
+@auth_options
 def book_command(
-    auth: CliAuthOptions,
     employee_id: str | None,
     floor_id: str,
     seat_id: str,
@@ -188,12 +210,22 @@ def book_command(
     check_in: str | None,
     check_out: str | None,
     dry_run: bool,
+    domain: str | None,
+    auth_token: str | None,
+    auth_config_file: str | None,
+    timeout_seconds: int,
 ) -> int:
     if bool(booking_date) == bool(schedule):
         raise click.UsageError("provide exactly one of --date or --schedule")
     if bool(check_in) != bool(check_out):
         raise click.UsageError("provide both --check-in and --check-out together")
 
+    auth = build_cli_auth_options(
+        domain=domain,
+        auth_token=auth_token,
+        auth_config_file=auth_config_file,
+        timeout_seconds=timeout_seconds,
+    )
     booker = resolve_booker(
         auth,
         floor_id=floor_id,
