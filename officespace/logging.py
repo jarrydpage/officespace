@@ -26,7 +26,7 @@ def configure_logging(
     handler = logging.StreamHandler(stream or sys.stdout)
     handler.setFormatter(
         FractionalSecondFormatter(
-            fmt="[%(asctime)s] %(message)s",
+            fmt="[%(asctime)s] [%(levelname)s] %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S.%f",
         )
     )
