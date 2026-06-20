@@ -25,6 +25,27 @@ class RunConfig:
     auth_inputs: AuthInputs
     booking: BookingConfig
 
+    @classmethod
+    def load(cls, config_path: str | Path) -> RunConfig:
+        resolved_config_path = Path(config_path).expanduser()
+        try:
+            raw_config = tomllib.loads(
+                resolved_config_path.read_text(encoding="utf-8")
+            ) or {}
+        except OSError as exc:
+            raise RunConfigurationError(
+                f"Unable to read config file {resolved_config_path}: {exc}"
+            ) from exc
+        except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            raise RunConfigurationError(
+                f"Unable to parse TOML config file {resolved_config_path}: {exc}"
+            ) from exc
+
+        if not isinstance(raw_config, dict):
+            raise RunConfigurationError("Config file must contain a top-level mapping.")
+
+        return parse_run_config(raw_config, config_dir=resolved_config_path.parent)
+
 
 class RunConfigurationError(ValueError):
     pass
@@ -50,41 +71,30 @@ def _load_auth_inputs(
     if auth_config_path is not None:
         resolved_auth_config_file = str(auth_config_path)
 
-    return AuthInputs(
-        subdomain=os.getenv("OFFICESPACE_SUBDOMAIN", auth_config.get("subdomain")),
-        session_cookie=os.getenv("OFFICESPACE_SESSION", auth_config.get("session_cookie")),
-        mobile_bearer_token=os.getenv(
-            "OFFICESPACE_MOBILE_BEARER",
-            auth_config.get("mobile_bearer_token"),
-        ),
-        qr_token=os.getenv("OFFICESPACE_QR_TOKEN", auth_config.get("qr_token")),
-        qr_link=os.getenv("OFFICESPACE_QR_LINK", auth_config.get("qr_link")),
-        auth_config_file=resolved_auth_config_file,
+    auth_token = os.getenv("OFFICESPACE_AUTH_TOKEN", auth_config.get("auth_token"))
+
+    force_renew_after_minutes = os.getenv(
+        "OFFICESPACE_FORCE_RENEW_AFTER",
+        auth_config.get("force_renew_after", 24 * 60),
     )
 
-
-def load_run_config(config_path: str | Path) -> RunConfig:
-    resolved_config_path = Path(config_path).expanduser()
     try:
-        config_bytes = resolved_config_path.read_bytes()
-    except OSError as exc:
+        force_renew_after_minutes = int(force_renew_after_minutes)
+        if force_renew_after_minutes < 0:
+            raise ValueError()
+    except (TypeError, ValueError) as exc:
         raise RunConfigurationError(
-            f"Unable to read config file {resolved_config_path}: {exc}"
+            "auth.force_renew_after must be a non-negative integer minutes value."
         ) from exc
 
-    try:
-        raw_config = tomllib.loads(config_bytes.decode("utf-8")) or {}
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
-        raise RunConfigurationError(
-            f"Unable to parse TOML config file {resolved_config_path}: {exc}"
-        ) from exc
+    force_renew_after_seconds = force_renew_after_minutes * 60
 
-    if not isinstance(raw_config, dict):
-        raise RunConfigurationError("Config file must contain a top-level mapping.")
-
-    return parse_run_config(
-        raw_config,
-        config_dir=resolved_config_path.parent,
+    return AuthInputs(
+        domain=os.getenv("OFFICESPACE_DOMAIN", auth_config.get("domain")),
+        auth_token=auth_token,
+        qr_image_file=None,
+        auth_config_file=resolved_auth_config_file,
+        force_renew_after_seconds=force_renew_after_seconds,
     )
 
 
@@ -95,11 +105,10 @@ def parse_run_config(
 ) -> RunConfig:
     resolved_config_dir = Path(config_dir)
     auth_config = config.get("auth") or {}
-    booking_config = config.get("booking") or {}
-
     if not isinstance(auth_config, dict):
         raise RunConfigurationError("auth must be a mapping.")
 
+    booking_config = config.get("booking") or {}
     if not isinstance(booking_config, dict):
         raise RunConfigurationError("booking must be a mapping.")
 
@@ -107,11 +116,6 @@ def parse_run_config(
         timeout_seconds = int(config.get("timeout_seconds", 30))
     except (TypeError, ValueError) as exc:
         raise RunConfigurationError("timeout_seconds must be an integer.") from exc
-
-    auth_inputs = _load_auth_inputs(
-        auth_config,
-        config_dir=resolved_config_dir,
-    )
 
     booking_date = booking_config.get("booking_date")
     schedule = booking_config.get("schedule")
@@ -149,6 +153,6 @@ def parse_run_config(
 
     return RunConfig(
         timeout_seconds=timeout_seconds,
-        auth_inputs=auth_inputs,
+        auth_inputs=_load_auth_inputs(auth_config, config_dir=resolved_config_dir),
         booking=booking,
     )

@@ -97,6 +97,8 @@ class PreparedBookingRequest:
     @property
     def redacted_headers(self) -> dict[str, str]:
         redacted = dict(self.headers)
+        if "Authorization" in redacted:
+            redacted["Authorization"] = "Bearer <redacted>"
         if "Cookie" in redacted:
             redacted["Cookie"] = "_huddle_session=<redacted>"
         if "X-CSRF-Token" in redacted:

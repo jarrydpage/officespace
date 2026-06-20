@@ -20,14 +20,15 @@ class OfficeSpaceClient:
         base_url: str,
         timeout_seconds: int,
         user_agent: str,
-        session_cookie_provider: Callable[[], str],
-        csrf_token: str,
+        bearer_token_provider: Callable[[], str],
     ) -> None:
         self.base_url = base_url
         self.timeout_seconds = timeout_seconds
         self.user_agent = user_agent
-        self.session_cookie_provider = session_cookie_provider
-        self.csrf_token = csrf_token
+        self.bearer_token_provider = bearer_token_provider
+
+    def authorization_header(self) -> str:
+        return f"Bearer {self.bearer_token_provider()}"
 
     def execute_operation(
         self,
@@ -43,11 +44,10 @@ class OfficeSpaceClient:
             headers={
                 "Accept": "*/*",
                 "Content-Type": "application/json",
-                "Cookie": f"_huddle_session={self.session_cookie_provider()}",
+                "Authorization": self.authorization_header(),
                 "Origin": self.base_url,
                 "Referer": referer,
                 "User-Agent": self.user_agent,
-                "X-CSRF-Token": self.csrf_token,
                 "X-Page-Context": page_context,
             },
             operation=operation,

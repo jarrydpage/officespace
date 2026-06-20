@@ -24,3 +24,14 @@ def token_is_expired(token: str, *, leeway_seconds: int = 30) -> bool:
     if not isinstance(exp, (int, float)):
         return False
     return exp <= time.time() + leeway_seconds
+
+
+def token_is_older_than(token: str, *, max_age_seconds: int) -> bool:
+    if max_age_seconds <= 0:
+        return True
+
+    iat = decode_jwt_payload(token).get("iat")
+    if not isinstance(iat, (int, float)):
+        return False
+
+    return iat <= time.time() - max_age_seconds

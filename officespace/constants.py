@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import re
-
 
 MOBILE_AUTH_USER_AGENT = (
     "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) "
@@ -27,12 +25,3 @@ DAY_NAMES = (
 DAY_NAME_TO_INDEX = {
     day_name: day_index for day_index, day_name in enumerate(DAY_NAMES)
 }
-
-CSRF_PATTERNS = (
-    re.compile(
-        r'<meta[^>]+name=["\']csrf-token["\'][^>]+content=["\']([^"\']+)["\']',
-        re.IGNORECASE,
-    ),
-    re.compile(r'"csrfToken"\s*:\s*"([^"]+)"'),
-    re.compile(r'"csrf-token"\s+content="([^"]+)"', re.IGNORECASE),
-)

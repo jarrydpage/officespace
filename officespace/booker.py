@@ -6,7 +6,7 @@ from typing import Any
 
 from .auth import OfficeSpaceAuthContext
 from .client import OfficeSpaceClient
-from .constants import DAY_NAME_TO_INDEX, DEFAULT_USER_AGENT
+from .constants import DAY_NAME_TO_INDEX
 from .helpers import day_index_for_date
 from .models import (
     CurrentUserBookings,
@@ -31,31 +31,13 @@ logger = logging.getLogger(__name__)
 class OfficeSpaceDeskBooker:
     def __init__(
         self,
-        subdomain: str | None = None,
-        session_cookie: str | None = None,
         *,
-        auth_config_file: str | None = None,
-        mobile_bearer_token: str | None = None,
-        qr_token: str | None = None,
-        auth_context: OfficeSpaceAuthContext | None = None,
+        auth_context: OfficeSpaceAuthContext,
         floor_id: str,
         seat_id: str,
         site_id: str | None = None,
-        timeout_seconds: int = 30,
-        user_agent: str = DEFAULT_USER_AGENT,
     ) -> None:
-        if auth_context is None and not subdomain:
-            raise RuntimeError("subdomain is required when auth_context is not provided.")
-
-        self.auth = auth_context or OfficeSpaceAuthContext(
-            subdomain=str(subdomain),
-            session_cookie=session_cookie,
-            auth_config_file=auth_config_file,
-            mobile_bearer_token=mobile_bearer_token,
-            qr_token=qr_token,
-            timeout_seconds=timeout_seconds,
-            user_agent=user_agent,
-        )
+        self.auth = auth_context
         self.base_url = self.auth.base_url
         self.floor_id = str(floor_id)
         self.seat_id = str(seat_id)
@@ -63,15 +45,14 @@ class OfficeSpaceDeskBooker:
         self.current_user_employee_id: str | None = None
         self.site_id = str(site_id) if site_id is not None else None
         self.site_booking_window: SiteBookingWindow | None = None
-        csrf_token = self.auth.fetch_csrf_token(floor_id=self.floor_id, seat_id=self.seat_id)
+        self.auth.refresh_auth_token()
         self.client = OfficeSpaceClient(
             base_url=self.base_url,
             timeout_seconds=self.auth.timeout_seconds,
             user_agent=self.auth.user_agent,
-            session_cookie_provider=self.auth.ensure_session_cookie,
-            csrf_token=csrf_token,
+            bearer_token_provider=self.auth.ensure_auth_token,
         )
-        logger.info("Authenticated - session cookie and CSRF token acquired.")
+        logger.info("Authenticated - auth token configured.")
 
     def prepare_booking_request(
         self,
@@ -132,12 +113,11 @@ class OfficeSpaceDeskBooker:
         headers = {
             "Accept": "*/*",
             "Content-Type": "application/json",
+            "Authorization": self.client.authorization_header(),
             "Origin": self.base_url,
             "Referer": self.seat_url,
             "User-Agent": self.auth.user_agent,
-            "X-CSRF-Token": self.client.csrf_token,
             "X-Page-Context": "visual-directory-floors-seats-max",
-            "Cookie": f"_huddle_session={self.auth.ensure_session_cookie()}",
         }
         return PreparedBookingRequest(
             url=f"{self.base_url}/graphql",

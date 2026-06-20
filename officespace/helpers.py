@@ -1,30 +1,8 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from urllib import parse as urlparse
 
 from .constants import OFFICESPACE_LOCAL_DATETIME_FORMAT
-
-
-def extract_qr_link_details(qr_link: str) -> tuple[str | None, str]:
-    parsed = urlparse.urlparse(qr_link)
-    if parsed.scheme != "officespacemobile" or parsed.netloc != "huddle":
-        raise RuntimeError("QR link must use the officespacemobile://huddle format.")
-
-    params = urlparse.parse_qs(parsed.query)
-    domain = params.get("domain", [None])[0]
-    token = params.get("token", [None])[0]
-    if not token:
-        raise RuntimeError("QR link did not contain a token parameter.")
-
-    return domain, token
-
-
-def derive_subdomain(domain: str) -> str:
-    suffix = ".officespacesoftware.com"
-    if domain.endswith(suffix):
-        return domain[: -len(suffix)]
-    return domain.split(".", 1)[0]
 
 
 def parse_local_datetime(value: str | None) -> datetime | None:

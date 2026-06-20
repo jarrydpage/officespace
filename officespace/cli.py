@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
+from pathlib import Path
 import sys
 
 import click
@@ -23,6 +24,18 @@ class CliAuthOptions:
 
 
 pass_cli_auth = click.make_pass_decorator(CliAuthOptions)
+
+
+def resolve_auth_context(auth: CliAuthOptions) -> OfficeSpaceAuthContext:
+    try:
+        return OfficeSpaceAuthContext.from_auth_inputs(
+            auth.inputs,
+            timeout_seconds=auth.timeout_seconds,
+        )
+    except AuthConfigurationError as exc:
+        raise click.UsageError(str(exc)) from exc
+
+
 def resolve_booker(
     auth: CliAuthOptions,
     *,
@@ -30,51 +43,30 @@ def resolve_booker(
     seat_id: str,
     site_id: str | None = None,
 ) -> OfficeSpaceDeskBooker:
-    try:
-        auth_context = OfficeSpaceAuthContext.from_auth_inputs(
-            auth.inputs,
-            timeout_seconds=auth.timeout_seconds,
-        )
-        return OfficeSpaceDeskBooker(
-            auth_context=auth_context,
-            floor_id=floor_id,
-            seat_id=seat_id,
-            site_id=site_id,
-        )
-    except AuthConfigurationError as exc:
-        raise click.UsageError(str(exc)) from exc
+    auth_context = resolve_auth_context(auth)
+    return OfficeSpaceDeskBooker(
+        auth_context=auth_context,
+        floor_id=floor_id,
+        seat_id=seat_id,
+        site_id=site_id,
+    )
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
-    "--subdomain",
-    envvar="OFFICESPACE_SUBDOMAIN",
-    help="OfficeSpace subdomain, for example 'inpex'.",
+    "--domain",
+    envvar="OFFICESPACE_DOMAIN",
+    help="OfficeSpace domain, for example 'inpex.officespacesoftware.com'.",
 )
 @click.option(
-    "--session-cookie",
-    envvar="OFFICESPACE_SESSION",
-    help="Authenticated _huddle_session cookie value.",
-)
-@click.option(
-    "--mobile-bearer-token",
-    envvar="OFFICESPACE_MOBILE_BEARER",
-    help="OfficeSpace mobile bearer token that can be exchanged at /ossmobile/auth.",
-)
-@click.option(
-    "--qr-token",
-    envvar="OFFICESPACE_QR_TOKEN",
-    help="QR bootstrap token from the officespacemobile://huddle link.",
-)
-@click.option(
-    "--qr-link",
-    envvar="OFFICESPACE_QR_LINK",
-    help="Full officespacemobile://huddle deep link from the QR code.",
+    "--auth-token",
+    envvar="OFFICESPACE_AUTH_TOKEN",
+    help="Existing OfficeSpace auth token loaded directly instead of using the auth cache.",
 )
 @click.option(
     "--auth-config-file",
     envvar="OFFICESPACE_AUTH_CONFIG_FILE",
-    help="JSON file used to cache and reload the mobile bearer token.",
+    help="JSON file used to cache and reload the auth token.",
 )
 @click.option(
     "--timeout-seconds",
@@ -86,40 +78,31 @@ def resolve_booker(
 @click.pass_context
 def cli(
     ctx: click.Context,
-    subdomain: str | None,
-    session_cookie: str | None,
-    mobile_bearer_token: str | None,
-    qr_token: str | None,
-    qr_link: str | None,
+    domain: str | None,
+    auth_token: str | None,
     auth_config_file: str | None,
     timeout_seconds: int,
 ) -> None:
+    resolved_auth_config_file = auth_config_file or str(Path("auth.json"))
+
     ctx.obj = CliAuthOptions(
         inputs=AuthInputs(
-            subdomain=subdomain,
-            session_cookie=session_cookie,
-            mobile_bearer_token=mobile_bearer_token,
-            qr_token=qr_token,
-            qr_link=qr_link,
-            auth_config_file=auth_config_file,
+            domain=domain,
+            auth_token=auth_token,
+            qr_image_file=None,
+            auth_config_file=resolved_auth_config_file,
         ),
         timeout_seconds=timeout_seconds,
     )
 
 
-@cli.command("bearer")
+@cli.command("token")
 @pass_cli_auth
-def bearer_command(auth: CliAuthOptions) -> int:
-    try:
-        auth_context = OfficeSpaceAuthContext.from_auth_inputs(
-            auth.inputs,
-            timeout_seconds=auth.timeout_seconds,
-        )
-    except AuthConfigurationError as exc:
-        raise click.UsageError(str(exc)) from exc
+def token_command(auth: CliAuthOptions) -> int:
+    auth_context = resolve_auth_context(auth)
     logger.info(
         json.dumps(
-            {"mobileBearerToken": auth_context.ensure_mobile_bearer_token()},
+            {"authToken": auth_context.refresh_auth_token()},
             indent=2,
             sort_keys=True,
         )
@@ -127,23 +110,35 @@ def bearer_command(auth: CliAuthOptions) -> int:
     return 0
 
 
-@cli.command("session")
+@cli.command("register")
+@click.option(
+    "--qr-image-file",
+    envvar="OFFICESPACE_QR_IMAGE_FILE",
+    help="PNG image file containing the OfficeSpace QR code used for auth registration.",
+)
 @pass_cli_auth
-def session_command(auth: CliAuthOptions) -> int:
-    try:
-        auth_context = OfficeSpaceAuthContext.from_auth_inputs(
-            auth.inputs,
+def register_command(auth: CliAuthOptions, qr_image_file: str | None) -> int:
+    resolved_qr_image_file = qr_image_file
+    if resolved_qr_image_file is None:
+        default_qr_image_path = Path("qr.png")
+        if default_qr_image_path.exists():
+            resolved_qr_image_file = str(default_qr_image_path)
+
+    auth_context = resolve_auth_context(
+        CliAuthOptions(
+            inputs=replace(auth.inputs, qr_image_file=resolved_qr_image_file),
             timeout_seconds=auth.timeout_seconds,
         )
-    except AuthConfigurationError as exc:
-        raise click.UsageError(str(exc)) from exc
-    logger.info(
-        json.dumps(
-            {"sessionCookie": auth_context.ensure_session_cookie()},
-            indent=2,
-            sort_keys=True,
-        )
     )
+    auth_context.register_auth_token()
+
+    result = {
+        "status": "ok",
+        "authConfigFile": str(auth_context.auth_config_path)
+        if auth_context.auth_config_path is not None
+        else None,
+    }
+    logger.info(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 

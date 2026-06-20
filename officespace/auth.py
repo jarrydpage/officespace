@@ -3,20 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
-from http import cookiejar
 import logging
 from pathlib import Path
 from typing import Any, Self
 from urllib import error, request
 
 from .constants import (
-    CSRF_PATTERNS,
     DEFAULT_USER_AGENT,
-    MOBILE_AUTH_USER_AGENT,
     MOBILE_QR_USER_AGENT,
 )
-from .helpers import derive_subdomain, extract_qr_link_details
-from .tokens import decode_jwt_payload, token_is_expired
+from .qr import decode_qr_link_image_file, extract_qr_link_details
+from .tokens import decode_jwt_payload, token_is_expired, token_is_older_than
 
 
 logger = logging.getLogger(__name__)
@@ -24,12 +21,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class AuthInputs:
-    subdomain: str | None
-    session_cookie: str | None
-    mobile_bearer_token: str | None
-    qr_token: str | None
-    qr_link: str | None
+    domain: str | None
+    auth_token: str | None
+    qr_image_file: str | None
     auth_config_file: str | None
+    force_renew_after_seconds: int = 24 * 60 * 60
 
 
 class AuthConfigurationError(ValueError):
@@ -39,20 +35,24 @@ class AuthConfigurationError(ValueError):
 class OfficeSpaceAuthContext:
     def __init__(
         self,
-        subdomain: str,
-        session_cookie: str | None = None,
+        domain: str,
         *,
         auth_config_file: str | None = None,
-        mobile_bearer_token: str | None = None,
-        qr_token: str | None = None,
+        auth_token: str | None = None,
+        registration_token: str | None = None,
+        force_renew_after_seconds: int = 24 * 60 * 60,
         timeout_seconds: int = 30,
         user_agent: str = DEFAULT_USER_AGENT,
     ) -> None:
-        self.base_url = f"https://{subdomain}.officespacesoftware.com"
-        self.auth_config_path = Path(auth_config_file).expanduser() if auth_config_file else None
-        self.session_cookie = session_cookie
-        self.mobile_bearer_token = mobile_bearer_token
-        self.qr_token = qr_token
+        self.domain = domain
+        self.base_url = f"https://{domain}"
+        self.auth_config_path = (
+            Path(auth_config_file).expanduser() if auth_config_file else None
+        )
+        self.auth_token = auth_token
+        self.logged_auth_token: str | None = None
+        self.registration_token = registration_token
+        self.force_renew_after_seconds = force_renew_after_seconds
         self.timeout_seconds = timeout_seconds
         self.user_agent = user_agent
 
@@ -64,108 +64,121 @@ class OfficeSpaceAuthContext:
         timeout_seconds: int = 30,
         user_agent: str = DEFAULT_USER_AGENT,
     ) -> Self:
-        subdomain = auth.subdomain
-        qr_token = auth.qr_token
-        qr_link = auth.qr_link
-
-        if (
-            not auth.session_cookie
-            and not auth.mobile_bearer_token
-            and not qr_token
-            and not qr_link
-            and not auth.auth_config_file
-        ):
+        if not any((auth.auth_token, auth.qr_image_file, auth.auth_config_file)):
             raise AuthConfigurationError(
-                "provide at least one auth input: session_cookie, mobile_bearer_token, "
-                "qr_token, qr_link, or auth_config_file"
+                "provide at least one auth input: auth_token, qr_image_file, or auth_config_file"
             )
 
-        if qr_token and qr_token.startswith("officespacemobile://"):
-            qr_link = qr_token
-            qr_token = None
+        auth_token = auth.auth_token
+        if auth_token:
+            payload = decode_jwt_payload(auth_token)
+            if not any(key in payload for key in ("exp", "iat", "sub")):
+                raise AuthConfigurationError(
+                    "auth_token must be an existing OfficeSpace auth token. QR registration is only supported via qr_image_file."
+                )
 
-        if qr_link:
-            qr_domain, qr_link_token = extract_qr_link_details(qr_link)
-            qr_token = qr_token or qr_link_token
-            if subdomain and qr_domain:
-                expected_domain = f"{subdomain}.officespacesoftware.com"
-                if qr_domain != expected_domain:
-                    raise AuthConfigurationError(
-                        f"QR link domain {qr_domain} does not match subdomain {subdomain}."
-                    )
-            elif not subdomain and qr_domain:
-                subdomain = derive_subdomain(qr_domain)
+        domain = auth.domain
+        registration_token = None
 
-        if not subdomain:
+        if auth.qr_image_file:
+            qr_image_path = Path(auth.qr_image_file).expanduser()
+            if not qr_image_path.exists():
+                raise AuthConfigurationError(
+                    f"QR image file {qr_image_path} does not exist."
+                )
+
+            try:
+                qr_link = decode_qr_link_image_file(qr_image_path)
+            except RuntimeError as exc:
+                raise AuthConfigurationError(str(exc)) from exc
+
+            qr_domain, registration_token = extract_qr_link_details(qr_link)
+            if domain and qr_domain and qr_domain != domain:
+                raise AuthConfigurationError(
+                    f"QR link domain {qr_domain} does not match domain {domain}."
+                )
+            if not domain and qr_domain:
+                domain = qr_domain
+
+        if not domain and auth.auth_config_file:
+            try:
+                cached_auth_config = cls._read_auth_config(auth.auth_config_file)
+            except RuntimeError as exc:
+                raise AuthConfigurationError(str(exc)) from exc
+
+            cached_domain = cached_auth_config.get("domain") if cached_auth_config else None
+            if isinstance(cached_domain, str) and cached_domain:
+                domain = cached_domain
+
+        if not domain:
             raise AuthConfigurationError(
-                "OfficeSpace subdomain is required, either directly or via qr_link."
+                "OfficeSpace domain is required, either directly, from QR-image registration, or from the auth config cache."
             )
 
         return cls(
-            subdomain=subdomain,
-            session_cookie=auth.session_cookie,
+            domain=domain,
             auth_config_file=auth.auth_config_file,
-            mobile_bearer_token=auth.mobile_bearer_token,
-            qr_token=qr_token,
+            auth_token=auth_token,
+            registration_token=registration_token,
+            force_renew_after_seconds=auth.force_renew_after_seconds,
             timeout_seconds=timeout_seconds,
             user_agent=user_agent,
         )
 
-    def fetch_csrf_token(self, *, floor_id: str, seat_id: str) -> str:
-        seat_url = self.build_seat_url(floor_id=floor_id, seat_id=seat_id)
-        seat_request = request.Request(
-            seat_url,
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Cookie": f"_huddle_session={self.ensure_session_cookie()}",
-                "User-Agent": self.user_agent,
-            },
-            method="GET",
-        )
+    @staticmethod
+    def _read_auth_config(
+        auth_config_file: str | Path | None,
+    ) -> dict[str, Any] | None:
+        if not auth_config_file:
+            return None
 
-        with request.urlopen(seat_request, timeout=self.timeout_seconds) as response:
-            html = response.read().decode("utf-8", errors="replace")
+        auth_config_path = Path(auth_config_file).expanduser()
+        if not auth_config_path.exists():
+            return None
 
-        for pattern in CSRF_PATTERNS:
-            match = pattern.search(html)
-            if match:
-                return match.group(1)
+        try:
+            config = json.loads(auth_config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"Unable to read auth config file {auth_config_path}: {exc}"
+            ) from exc
 
-        raise RuntimeError(
-            "Unable to locate a CSRF token on the seat page. "
-            "The seat page format may have changed."
-        )
+        if not isinstance(config, dict):
+            raise RuntimeError(
+                f"Auth config file {auth_config_path} must contain a top-level mapping."
+            )
 
-    def ensure_session_cookie(self) -> str:
-        if self.session_cookie:
-            return self.session_cookie
+        return config
 
-        self.session_cookie = self.exchange_mobile_bearer_for_session()
-        return self.session_cookie
-
-    def ensure_mobile_bearer_token(self) -> str:
-        token = self.mobile_bearer_token
+    def _current_auth_token(self) -> str | None:
+        token = self.auth_token
         if token and token_is_expired(token):
             token = None
 
-        if not token:
-            token = self.load_cached_mobile_bearer_token()
+        if token:
+            return token
 
+        return self.load_cached_auth_token()
+
+    def ensure_auth_token(self) -> str:
+        token = self._current_auth_token()
         if not token:
-            if not self.qr_token:
+            if not self.registration_token:
                 raise RuntimeError(
-                    "No valid cached mobile bearer token found. Set OFFICESPACE_QR_TOKEN "
-                    "for the first run or to refresh the cache."
+                    "No valid cached auth token found. Run register to create auth.json or set OFFICESPACE_AUTH_TOKEN."
                 )
 
-            token = self.exchange_qr_token_for_mobile_bearer()
-            self.save_cached_mobile_bearer_token(token)
+            return self.register_auth_token()
 
-        self.mobile_bearer_token = token
+        self.auth_token = token
+
+        if token == self.logged_auth_token:
+            return token
 
         exp = decode_jwt_payload(token).get("exp")
         if not isinstance(exp, (int, float)):
-            logger.info("Bearer token acquired.")
+            logger.info("Auth token acquired.")
+            self.logged_auth_token = token
             return token
 
         expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
@@ -174,24 +187,78 @@ class OfficeSpaceAuthContext:
             int((expires_at - datetime.now(timezone.utc)).total_seconds() // 86400),
         )
         logger.info(
-            "Bearer token valid until %s (%sd left).",
+            "Auth token valid until %s (%sd left).",
             expires_at.isoformat(),
             remaining_days,
         )
+        self.logged_auth_token = token
         return token
 
-    def load_cached_mobile_bearer_token(self) -> str | None:
-        if not self.auth_config_path or not self.auth_config_path.exists():
-            return None
-
-        try:
-            config = json.loads(self.auth_config_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+    def register_auth_token(self) -> str:
+        if not self.registration_token:
             raise RuntimeError(
-                f"Unable to read auth config file {self.auth_config_path}: {exc}"
+                "No registration token available. Run register with a QR image."
+            )
+
+        logger.info("Using registration token for auth registration.")
+        try:
+            token = self._request_auth_token(
+                self.registration_token,
+                missing_token_message=(
+                    "Auth registration exchange completed without returning an auth token."
+                ),
+            )
+        except error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(
+                f"Auth registration exchange failed with HTTP {exc.code}: {body_text}"
             ) from exc
 
-        token = config.get("mobileBearerToken")
+        self.auth_token = token
+        self.save_cached_auth_token(token)
+        return self.ensure_auth_token()
+
+    def refresh_auth_token(self) -> str:
+        token = self._current_auth_token()
+        if not token:
+            return self.ensure_auth_token()
+
+        self.auth_token = token
+        if not token_is_older_than(token, max_age_seconds=self.force_renew_after_seconds):
+            return self.ensure_auth_token()
+
+        logger.info(
+            "Cached auth token is older than the configured renewal interval (%ss) - refreshing.",
+            self.force_renew_after_seconds,
+        )
+
+        try:
+            refreshed_token = self._request_auth_token(
+                token,
+                missing_token_message=(
+                    "Auth token refresh completed without returning an auth token."
+                ),
+            )
+        except error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 401:
+                raise RuntimeError(
+                    "Auth token was rejected with HTTP 401. Run register again to create a new auth token."
+                ) from exc
+            raise RuntimeError(
+                f"Auth token refresh failed with HTTP {exc.code}: {body_text}"
+            ) from exc
+
+        self.auth_token = refreshed_token
+        self.save_cached_auth_token(refreshed_token)
+        return self.ensure_auth_token()
+
+    def load_cached_auth_token(self) -> str | None:
+        config = self._read_auth_config(self.auth_config_path)
+        if config is None:
+            return None
+
+        token = config.get("authToken")
         if not isinstance(token, str) or not token:
             return None
 
@@ -200,12 +267,12 @@ class OfficeSpaceAuthContext:
 
         return token
 
-    def save_cached_mobile_bearer_token(self, token: str) -> None:
+    def save_cached_auth_token(self, token: str) -> None:
         if not self.auth_config_path:
             return
 
         payload = decode_jwt_payload(token)
-        config: dict[str, Any] = {"mobileBearerToken": token}
+        config: dict[str, Any] = {"authToken": token, "domain": self.domain}
         for key in ("exp", "iat", "sub"):
             if key in payload:
                 config[key] = payload[key]
@@ -221,109 +288,33 @@ class OfficeSpaceAuthContext:
                 f"Unable to write auth config file {self.auth_config_path}: {exc}"
             ) from exc
 
-    def clear_cached_mobile_bearer_token(self) -> None:
-        if not self.auth_config_path or not self.auth_config_path.exists():
-            return
-
-        try:
-            self.auth_config_path.unlink()
-        except OSError:
-            pass
-
-    def exchange_qr_token_for_mobile_bearer(self) -> str:
-        pairing_session = self.session_cookie or self.bootstrap_session_cookie()
+    def _request_auth_token(
+        self,
+        source_token: str,
+        *,
+        missing_token_message: str,
+    ) -> str:
         auth_url = f"{self.base_url}/ossmobile/auth"
         auth_request = request.Request(
             auth_url,
             data=b"",
             headers={
                 "Accept": "*/*",
-                "Authorization": f"Bearer {self.qr_token}",
-                "Cookie": f"_huddle_session={pairing_session}",
+                "Authorization": f"Bearer {source_token}",
                 "User-Agent": MOBILE_QR_USER_AGENT,
             },
             method="POST",
         )
 
-        try:
-            with request.urlopen(auth_request, timeout=self.timeout_seconds) as response:
-                authorization_header = (
-                    response.headers.get("Authorization")
-                    or response.headers.get("authorization")
-                )
-        except error.HTTPError as exc:
-            body_text = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"QR auth exchange failed with HTTP {exc.code}: {body_text}"
-            ) from exc
-
-        if not authorization_header or not authorization_header.startswith("Bearer "):
-            raise RuntimeError(
-                "QR auth exchange completed without returning a mobile bearer token."
+        with request.urlopen(auth_request, timeout=self.timeout_seconds) as response:
+            authorization_header = (
+                response.headers.get("Authorization")
+                or response.headers.get("authorization")
             )
 
+        if not authorization_header or not authorization_header.startswith("Bearer "):
+            raise RuntimeError(missing_token_message)
+
         return authorization_header.split(" ", 1)[1]
-
-    def bootstrap_session_cookie(self) -> str:
-        bootstrap_url = f"{self.base_url}/visual-directory"
-        cookies = cookiejar.CookieJar()
-        opener = request.build_opener(request.HTTPCookieProcessor(cookies))
-        bootstrap_request = request.Request(
-            bootstrap_url,
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "User-Agent": MOBILE_QR_USER_AGENT,
-            },
-            method="GET",
-        )
-
-        try:
-            with opener.open(bootstrap_request, timeout=self.timeout_seconds):
-                pass
-        except error.HTTPError as exc:
-            body_text = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(
-                f"Unable to bootstrap a pairing session with HTTP {exc.code}: {body_text}"
-            ) from exc
-
-        for cookie in cookies:
-            if cookie.name == "_huddle_session":
-                return cookie.value
-
-        raise RuntimeError("Unable to bootstrap a pairing _huddle_session cookie.")
-
-    def exchange_mobile_bearer_for_session(self, *, allow_refresh: bool = True) -> str:
-        auth_url = f"{self.base_url}/ossmobile/auth"
-        cookies = cookiejar.CookieJar()
-        opener = request.build_opener(request.HTTPCookieProcessor(cookies))
-        auth_request = request.Request(
-            auth_url,
-            headers={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Authorization": f"Bearer {self.ensure_mobile_bearer_token()}",
-                "User-Agent": MOBILE_AUTH_USER_AGENT,
-            },
-            method="GET",
-        )
-
-        try:
-            with opener.open(auth_request, timeout=self.timeout_seconds):
-                pass
-        except error.HTTPError as exc:
-            body_text = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 401 and allow_refresh and self.qr_token:
-                self.mobile_bearer_token = None
-                self.clear_cached_mobile_bearer_token()
-                return self.exchange_mobile_bearer_for_session(allow_refresh=False)
-            raise RuntimeError(
-                f"Mobile auth exchange failed with HTTP {exc.code}: {body_text}"
-            ) from exc
-
-        for cookie in cookies:
-            if cookie.name == "_huddle_session":
-                return cookie.value
-
-        raise RuntimeError("Mobile auth exchange completed without returning _huddle_session.")
-
     def build_seat_url(self, *, floor_id: str, seat_id: str) -> str:
         return f"{self.base_url}/visual-directory/floors/{floor_id}/seats/{seat_id}/max"
