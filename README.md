@@ -48,11 +48,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-If local registration cannot load `pyzbar`, install `zbar` first on macOS:
-
-```bash
-brew install zbar
-```
+If local registration cannot load `pyzbar`, install the `zbar` system library for your platform before running registration.
 
 For registration, use either:
 
