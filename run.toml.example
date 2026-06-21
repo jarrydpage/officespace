@@ -1,0 +1,31 @@
+# Example OfficeSpace booking config.
+#
+# This file is safe to commit: keep auth secrets in auth.json or environment
+# variables instead of in this file.
+#
+# OFFICESPACE_* environment variables override values from this file.
+
+[auth]
+# Optional if QR registration or auth.json already provides the domain.
+domain = "your-company.officespacesoftware.com"
+
+# Optional; defaults to auth.json in the project root.
+auth_config_file = "auth.json"
+
+# Refresh cached auth tokens after this many minutes even if JWT expiry is later.
+max_token_age = 1440
+
+[booking]
+# Required.
+floor_id = "YOUR_FLOOR_ID"
+seat_id = "YOUR_SEAT_ID"
+
+# Optional. If omitted, the site is resolved from the seat.
+# site_id = "YOUR_SITE_ID"
+
+# Optional. If omitted, the linked employee for the current user is used.
+# employee_id = "YOUR_EMPLOYEE_ID"
+
+# Set exactly one of booking_date or schedule.
+# booking_date = "2026-06-22"
+schedule = ["monday", "tuesday", "wednesday", "thursday"]
