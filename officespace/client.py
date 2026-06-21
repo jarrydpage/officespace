@@ -7,6 +7,7 @@ from gql.graphql_request import GraphQLRequest
 from gql.transport.exceptions import TransportError, TransportQueryError, TransportServerError
 from gql.transport.requests import RequestsHTTPTransport
 
+from .auth import OfficeSpaceAuthContext
 from .models import GraphQLOperationEnvelope, GraphQLOperationError, graphql_errors_to_json
 
 
@@ -17,18 +18,9 @@ class OfficeSpaceClient:
     def __init__(
         self,
         *,
-        base_url: str,
-        timeout_seconds: int,
-        user_agent: str,
-        bearer_token_provider: Callable[[], str],
+        auth_context: OfficeSpaceAuthContext,
     ) -> None:
-        self.base_url = base_url
-        self.timeout_seconds = timeout_seconds
-        self.user_agent = user_agent
-        self.bearer_token_provider = bearer_token_provider
-
-    def authorization_header(self) -> str:
-        return f"Bearer {self.bearer_token_provider()}"
+        self.auth = auth_context
 
     def execute_operation(
         self,
@@ -40,14 +32,13 @@ class OfficeSpaceClient:
         parser: Callable[[GraphQLOperationEnvelope], GraphQLOperationResult],
     ) -> GraphQLOperationResult:
         envelope = self.request_operation(
-            url=f"{self.base_url}/graphql",
+            url=f"{self.auth.base_url}/graphql",
             headers={
                 "Accept": "*/*",
                 "Content-Type": "application/json",
-                "Authorization": self.authorization_header(),
-                "Origin": self.base_url,
+                "Origin": self.auth.base_url,
                 "Referer": referer,
-                "User-Agent": self.user_agent,
+                "User-Agent": self.auth.user_agent,
                 "X-Page-Context": page_context,
             },
             operation=operation,
@@ -81,10 +72,16 @@ class OfficeSpaceClient:
         if operation_name is not None and not isinstance(operation_name, str):
             raise RuntimeError(f"{error_prefix} requires operationName to be a string.")
 
+        token = self.auth.refresh_auth_token()
+        headers = {
+            **headers,
+            "Authorization": f"Bearer {token}",
+        }
+
         transport = RequestsHTTPTransport(
             url=url,
             headers=headers,
-            timeout=self.timeout_seconds,
+            timeout=self.auth.timeout_seconds,
             use_json=True,
             method="POST",
         )

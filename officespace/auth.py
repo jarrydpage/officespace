@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import logging
 from pathlib import Path
@@ -21,6 +21,11 @@ from .tokens import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def _format_remaining_hours(duration: timedelta) -> str:
+    remaining_hours = max(0.0, duration.total_seconds() / (60 * 60))
+    return f"{remaining_hours:.1f}h"
 
 
 @dataclass(frozen=True)
@@ -54,7 +59,6 @@ class OfficeSpaceAuthContext:
             Path(auth_config_file).expanduser() if auth_config_file else None
         )
         self.auth_token = auth_token
-        self.logged_auth_token: str | None = None
         self.registration_token = registration_token
         self.max_token_age_seconds = max_token_age_seconds
         self.timeout_seconds = timeout_seconds
@@ -164,7 +168,43 @@ class OfficeSpaceAuthContext:
 
         return self.load_cached_auth_token()
 
-    def ensure_auth_token(self) -> str:
+    def log_auth_token_status(self, token: str) -> None:
+        payload = decode_jwt_payload(token)
+        exp = payload.get("exp")
+        if not isinstance(exp, (int, float)):
+            logger.info("Auth token acquired.")
+            return
+
+        now = datetime.now(timezone.utc)
+        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
+        expires_in = _format_remaining_hours(expires_at - now)
+
+        iat = payload.get("iat")
+        if not isinstance(iat, (int, float)):
+            logger.info(
+                "Auth token valid until %s (%s left).",
+                expires_at.isoformat(),
+                expires_in,
+            )
+            return
+
+        refresh_at = datetime.fromtimestamp(
+            iat + self.max_token_age_seconds,
+            tz=timezone.utc,
+        )
+        refresh_in = _format_remaining_hours(refresh_at - now)
+        logger.info(
+            "Auth token valid until %s (%s left).",
+            expires_at.isoformat(),
+            expires_in,
+        )
+        logger.info(
+            "Max-age refresh at %s (%s left).",
+            refresh_at.isoformat(),
+            refresh_in,
+        )
+
+    def _require_auth_token(self) -> str:
         token = self._current_auth_token()
         if not token:
             if not self.registration_token:
@@ -175,27 +215,6 @@ class OfficeSpaceAuthContext:
             return self.register_auth_token()
 
         self.auth_token = token
-
-        if token == self.logged_auth_token:
-            return token
-
-        exp = decode_jwt_payload(token).get("exp")
-        if not isinstance(exp, (int, float)):
-            logger.info("Auth token acquired.")
-            self.logged_auth_token = token
-            return token
-
-        expires_at = datetime.fromtimestamp(exp, tz=timezone.utc)
-        remaining_days = max(
-            0,
-            int((expires_at - datetime.now(timezone.utc)).total_seconds() // 86400),
-        )
-        logger.info(
-            "Auth token valid until %s (%sd left).",
-            expires_at.isoformat(),
-            remaining_days,
-        )
-        self.logged_auth_token = token
         return token
 
     def register_auth_token(self) -> str:
@@ -220,16 +239,16 @@ class OfficeSpaceAuthContext:
 
         self.auth_token = token
         self.save_cached_auth_token(token)
-        return self.ensure_auth_token()
+        return self._require_auth_token()
 
     def refresh_auth_token(self) -> str:
         token = self._current_auth_token()
         if not token:
-            return self.ensure_auth_token()
+            return self._require_auth_token()
 
         self.auth_token = token
         if not token_is_stale(token, max_age_seconds=self.max_token_age_seconds):
-            return self.ensure_auth_token()
+            return token
 
         logger.info(
             "Cached auth token is older than the configured max token age (%ss) - refreshing.",
@@ -255,7 +274,7 @@ class OfficeSpaceAuthContext:
 
         self.auth_token = refreshed_token
         self.save_cached_auth_token(refreshed_token)
-        return self.ensure_auth_token()
+        return self._require_auth_token()
 
     def load_cached_auth_token(self) -> str | None:
         config = self._read_auth_config(self.auth_config_path)

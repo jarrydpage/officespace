@@ -87,6 +87,8 @@ def resolve_booker(
     site_id: str | None = None,
 ) -> OfficeSpaceDeskBooker:
     auth_context = resolve_auth_context(auth)
+    token = auth_context.refresh_auth_token()
+    auth_context.log_auth_token_status(token)
     return OfficeSpaceDeskBooker(
         auth_context=auth_context,
         floor_id=floor_id,
@@ -115,9 +117,11 @@ def token_command(
         timeout_seconds=timeout_seconds,
     )
     auth_context = resolve_auth_context(auth)
+    token = auth_context.refresh_auth_token()
+    auth_context.log_auth_token_status(token)
     logger.info(
         json.dumps(
-            {"authToken": auth_context.refresh_auth_token()},
+            {"authToken": token},
             indent=2,
             sort_keys=True,
         )
@@ -153,7 +157,8 @@ def register_command(
         qr_image_file=resolved_qr_image_file,
     )
     auth_context = resolve_auth_context(auth)
-    auth_context.register_auth_token()
+    token = auth_context.register_auth_token()
+    auth_context.log_auth_token_status(token)
 
     result = {
         "status": "ok",
