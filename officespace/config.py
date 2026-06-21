@@ -21,7 +21,6 @@ class BookingConfig:
 
 @dataclass(frozen=True)
 class RunConfig:
-    timeout_seconds: int
     auth_inputs: AuthInputs
     booking: BookingConfig
 
@@ -73,28 +72,28 @@ def _load_auth_inputs(
 
     auth_token = os.getenv("OFFICESPACE_AUTH_TOKEN", auth_config.get("auth_token"))
 
-    force_renew_after_minutes = os.getenv(
-        "OFFICESPACE_FORCE_RENEW_AFTER",
-        auth_config.get("force_renew_after", 24 * 60),
+    max_token_age_minutes = os.getenv(
+        "OFFICESPACE_MAX_TOKEN_AGE",
+        auth_config.get("max_token_age", 24 * 60),
     )
 
     try:
-        force_renew_after_minutes = int(force_renew_after_minutes)
-        if force_renew_after_minutes < 0:
+        max_token_age_minutes = int(max_token_age_minutes)
+        if max_token_age_minutes < 0:
             raise ValueError()
     except (TypeError, ValueError) as exc:
         raise RunConfigurationError(
-            "auth.force_renew_after must be a non-negative integer minutes value."
+            "auth.max_token_age must be a non-negative integer minutes value."
         ) from exc
 
-    force_renew_after_seconds = force_renew_after_minutes * 60
+    max_token_age_seconds = max_token_age_minutes * 60
 
     return AuthInputs(
         domain=os.getenv("OFFICESPACE_DOMAIN", auth_config.get("domain")),
         auth_token=auth_token,
         qr_image_file=None,
         auth_config_file=resolved_auth_config_file,
-        force_renew_after_seconds=force_renew_after_seconds,
+        max_token_age_seconds=max_token_age_seconds,
     )
 
 
@@ -111,11 +110,6 @@ def parse_run_config(
     booking_config = config.get("booking") or {}
     if not isinstance(booking_config, dict):
         raise RunConfigurationError("booking must be a mapping.")
-
-    try:
-        timeout_seconds = int(config.get("timeout_seconds", 30))
-    except (TypeError, ValueError) as exc:
-        raise RunConfigurationError("timeout_seconds must be an integer.") from exc
 
     booking_date = booking_config.get("booking_date")
     schedule = booking_config.get("schedule")
@@ -152,7 +146,6 @@ def parse_run_config(
     )
 
     return RunConfig(
-        timeout_seconds=timeout_seconds,
         auth_inputs=_load_auth_inputs(auth_config, config_dir=resolved_config_dir),
         booking=booking,
     )

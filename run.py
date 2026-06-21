@@ -35,10 +35,7 @@ try:
         booking.floor_id,
         booking.seat_id,
     )
-    auth_context = OfficeSpaceAuthContext.from_auth_inputs(
-        config.auth_inputs,
-        timeout_seconds=config.timeout_seconds,
-    )
+    auth_context = OfficeSpaceAuthContext.from_auth_inputs(config.auth_inputs)
     booker = OfficeSpaceDeskBooker(
         auth_context=auth_context,
         floor_id=booking.floor_id,

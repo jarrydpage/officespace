@@ -60,7 +60,7 @@ Example `run.toml`:
 
 ```toml
 [auth]
-force_renew_after = 1440
+max_token_age = 1440
 
 [booking]
 floor_id = "106"

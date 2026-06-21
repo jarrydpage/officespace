@@ -26,7 +26,7 @@ def token_is_expired(token: str, *, leeway_seconds: int = 30) -> bool:
     return exp <= time.time() + leeway_seconds
 
 
-def token_is_older_than(token: str, *, max_age_seconds: int) -> bool:
+def token_is_stale(token: str, *, max_age_seconds: int) -> bool:
     if max_age_seconds <= 0:
         return True
 

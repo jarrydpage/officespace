@@ -13,7 +13,11 @@ from .constants import (
     MOBILE_QR_USER_AGENT,
 )
 from .qr import decode_qr_link_image_file, extract_qr_link_details
-from .tokens import decode_jwt_payload, token_is_expired, token_is_older_than
+from .tokens import (
+    decode_jwt_payload,
+    token_is_expired,
+    token_is_stale,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -25,7 +29,7 @@ class AuthInputs:
     auth_token: str | None
     qr_image_file: str | None
     auth_config_file: str | None
-    force_renew_after_seconds: int = 24 * 60 * 60
+    max_token_age_seconds: int = 24 * 60 * 60
 
 
 class AuthConfigurationError(ValueError):
@@ -40,7 +44,7 @@ class OfficeSpaceAuthContext:
         auth_config_file: str | None = None,
         auth_token: str | None = None,
         registration_token: str | None = None,
-        force_renew_after_seconds: int = 24 * 60 * 60,
+        max_token_age_seconds: int = 24 * 60 * 60,
         timeout_seconds: int = 30,
         user_agent: str = DEFAULT_USER_AGENT,
     ) -> None:
@@ -52,7 +56,7 @@ class OfficeSpaceAuthContext:
         self.auth_token = auth_token
         self.logged_auth_token: str | None = None
         self.registration_token = registration_token
-        self.force_renew_after_seconds = force_renew_after_seconds
+        self.max_token_age_seconds = max_token_age_seconds
         self.timeout_seconds = timeout_seconds
         self.user_agent = user_agent
 
@@ -120,7 +124,7 @@ class OfficeSpaceAuthContext:
             auth_config_file=auth.auth_config_file,
             auth_token=auth_token,
             registration_token=registration_token,
-            force_renew_after_seconds=auth.force_renew_after_seconds,
+            max_token_age_seconds=auth.max_token_age_seconds,
             timeout_seconds=timeout_seconds,
             user_agent=user_agent,
         )
@@ -224,12 +228,12 @@ class OfficeSpaceAuthContext:
             return self.ensure_auth_token()
 
         self.auth_token = token
-        if not token_is_older_than(token, max_age_seconds=self.force_renew_after_seconds):
+        if not token_is_stale(token, max_age_seconds=self.max_token_age_seconds):
             return self.ensure_auth_token()
 
         logger.info(
-            "Cached auth token is older than the configured renewal interval (%ss) - refreshing.",
-            self.force_renew_after_seconds,
+            "Cached auth token is older than the configured max token age (%ss) - refreshing.",
+            self.max_token_age_seconds,
         )
 
         try:
