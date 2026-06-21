@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -19,9 +19,6 @@ dependencies = [
 [project.scripts]
 officespace = "officespace.cli.officespace:app"
 officespace-runner = "officespace.cli.runner:app"
-
-[tool.setuptools]
-package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
