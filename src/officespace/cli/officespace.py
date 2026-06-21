@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
@@ -108,38 +107,23 @@ DryRunOption = Annotated[
 ]
 
 
-@dataclass(frozen=True)
-class CliAuthOptions:
-    inputs: AuthInputs
-    timeout_seconds: int
-
-
-def build_cli_auth_options(
+def resolve_auth_context(
     *,
     domain: str | None,
     auth_token: str | None,
     auth_config_file: str | None,
     timeout_seconds: int,
     qr_image_file: str | None = None,
-) -> CliAuthOptions:
-    resolved_auth_config_file = auth_config_file or str(Path("auth.json"))
-
-    return CliAuthOptions(
-        inputs=AuthInputs(
-            domain=domain,
-            auth_token=auth_token,
-            qr_image_file=qr_image_file,
-            auth_config_file=resolved_auth_config_file,
-        ),
-        timeout_seconds=timeout_seconds,
-    )
-
-
-def resolve_auth_context(auth: CliAuthOptions) -> OfficeSpaceAuthContext:
+) -> OfficeSpaceAuthContext:
     try:
         return OfficeSpaceAuthContext.from_auth_inputs(
-            auth.inputs,
-            timeout_seconds=auth.timeout_seconds,
+            AuthInputs(
+                domain=domain,
+                auth_token=auth_token,
+                qr_image_file=qr_image_file,
+                auth_config_file=auth_config_file or str(Path("auth.json")),
+            ),
+            timeout_seconds=timeout_seconds,
         )
     except AuthConfigurationError as exc:
         raise typer.BadParameter(str(exc)) from exc
@@ -152,22 +136,16 @@ def token_command(
     auth_config_file: AuthConfigFileOption = None,
     timeout_seconds: TimeoutSecondsOption = 30,
 ) -> int:
-    auth = build_cli_auth_options(
+    auth_context = resolve_auth_context(
         domain=domain,
         auth_token=auth_token,
         auth_config_file=auth_config_file,
         timeout_seconds=timeout_seconds,
     )
-    auth_context = resolve_auth_context(auth)
     token = auth_context.refresh_auth_token()
     auth_context.log_auth_token_status(token)
-    logger.info(
-        json.dumps(
-            {"authToken": token},
-            indent=2,
-            sort_keys=True,
-        )
-    )
+    auth_token_json = json.dumps({"authToken": token}, indent=2, sort_keys=True)
+    logger.info("%s", auth_token_json)
     return 0
 
 
@@ -185,14 +163,13 @@ def register_command(
         if default_qr_image_path.exists():
             resolved_qr_image_file = str(default_qr_image_path)
 
-    auth = build_cli_auth_options(
+    auth_context = resolve_auth_context(
         domain=domain,
         auth_token=auth_token,
         auth_config_file=auth_config_file,
         timeout_seconds=timeout_seconds,
         qr_image_file=resolved_qr_image_file,
     )
-    auth_context = resolve_auth_context(auth)
     token = auth_context.register_auth_token()
     auth_context.log_auth_token_status(token)
 
@@ -202,7 +179,8 @@ def register_command(
         if auth_context.auth_config_path is not None
         else None,
     }
-    logger.info(json.dumps(result, indent=2, sort_keys=True))
+    result_json = json.dumps(result, indent=2, sort_keys=True)
+    logger.info("%s", result_json)
     return 0
 
 
@@ -227,13 +205,12 @@ def book_command(
     if bool(check_in) != bool(check_out):
         raise typer.BadParameter("provide both --check-in and --check-out together")
 
-    auth = build_cli_auth_options(
+    auth_context = resolve_auth_context(
         domain=domain,
         auth_token=auth_token,
         auth_config_file=auth_config_file,
         timeout_seconds=timeout_seconds,
     )
-    auth_context = resolve_auth_context(auth)
     token = auth_context.refresh_auth_token()
     auth_context.log_auth_token_status(token)
     booker = OfficeSpaceDeskBooker(
