@@ -13,6 +13,24 @@ class FractionalSecondFormatter(logging.Formatter):
             return timestamp.strftime(datefmt)
         return timestamp.strftime("%Y-%m-%d %H:%M:%S.%f")
 
+    def format(self, record: logging.LogRecord) -> str:
+        rendered = super().format(record)
+        lines = rendered.splitlines()
+        if len(lines) <= 1:
+            return rendered
+
+        prefix_record = logging.makeLogRecord(record.__dict__.copy())
+        prefix_record.msg = ""
+        prefix_record.args = ()
+        prefix_record.message = ""
+        if self.usesTime():
+            prefix_record.asctime = self.formatTime(record, self.datefmt)
+        prefix = self.formatMessage(prefix_record)
+
+        prefixed_lines = [lines[0]]
+        prefixed_lines.extend(f"{prefix}{line}" for line in lines[1:])
+        return "\n".join(prefixed_lines)
+
 
 def configure_logging(
     *,
