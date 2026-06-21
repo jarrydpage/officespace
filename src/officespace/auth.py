@@ -9,6 +9,7 @@ from typing import Any, Self
 from urllib import error, request
 
 from officespace.constants import (
+    DEFAULT_AUTH_CONFIG_FILE,
     DEFAULT_USER_AGENT,
     MOBILE_QR_USER_AGENT,
 )
@@ -30,10 +31,10 @@ def _format_remaining_hours(duration: timedelta) -> str:
 
 @dataclass(frozen=True)
 class AuthInputs:
-    domain: str | None
-    auth_token: str | None
-    qr_image_file: str | None
-    auth_config_file: str | None
+    domain: str | None = None
+    auth_token: str | None = None
+    qr_image_file: str | None = None
+    auth_config_file: str | None = None
     max_token_age_seconds: int = 24 * 60 * 60
 
 
@@ -65,13 +66,27 @@ class OfficeSpaceAuthContext:
         self.user_agent = user_agent
 
     @classmethod
-    def from_auth_inputs(
+    def from_inputs(
         cls,
-        auth: AuthInputs,
+        auth: AuthInputs | None = None,
         *,
+        domain: str | None = None,
+        auth_token: str | None = None,
+        qr_image_file: str | None = None,
+        auth_config_file: str | None = None,
+        max_token_age_seconds: int = 24 * 60 * 60,
         timeout_seconds: int = 30,
         user_agent: str = DEFAULT_USER_AGENT,
     ) -> Self:
+        if auth is None:
+            auth = AuthInputs(
+                domain=domain,
+                auth_token=auth_token,
+                qr_image_file=qr_image_file,
+                auth_config_file=auth_config_file or DEFAULT_AUTH_CONFIG_FILE,
+                max_token_age_seconds=max_token_age_seconds,
+            )
+
         if not any((auth.auth_token, auth.qr_image_file, auth.auth_config_file)):
             raise AuthConfigurationError(
                 "provide at least one auth input: auth_token, qr_image_file, or auth_config_file"

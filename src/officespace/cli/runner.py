@@ -48,7 +48,7 @@ def main(*, config_path: str | Path | None = None) -> int:
             booking.floor_id,
             booking.seat_id,
         )
-        auth_context = OfficeSpaceAuthContext.from_auth_inputs(config.auth_inputs)
+        auth_context = OfficeSpaceAuthContext.from_inputs(config.auth_inputs)
         token = auth_context.refresh_auth_token()
         auth_context.log_auth_token_status(token)
         booker = OfficeSpaceDeskBooker(

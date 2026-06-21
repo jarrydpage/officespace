@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from officespace.auth import AuthConfigurationError, AuthInputs, OfficeSpaceAuthContext
+from officespace.auth import OfficeSpaceAuthContext
 from officespace.booker import OfficeSpaceDeskBooker
 from officespace.utils.helpers import parse_schedule_arg
 from officespace.utils.logging import configure_logging
@@ -45,6 +45,7 @@ AuthConfigFileOption = Annotated[
     typer.Option(
         envvar="OFFICESPACE_AUTH_CONFIG_FILE",
         help="JSON file used to cache and reload the auth token.",
+        show_default="auth.json",
     ),
 ]
 TimeoutSecondsOption = Annotated[
@@ -107,28 +108,6 @@ DryRunOption = Annotated[
 ]
 
 
-def resolve_auth_context(
-    *,
-    domain: str | None,
-    auth_token: str | None,
-    auth_config_file: str | None,
-    timeout_seconds: int,
-    qr_image_file: str | None = None,
-) -> OfficeSpaceAuthContext:
-    try:
-        return OfficeSpaceAuthContext.from_auth_inputs(
-            AuthInputs(
-                domain=domain,
-                auth_token=auth_token,
-                qr_image_file=qr_image_file,
-                auth_config_file=auth_config_file or str(Path("auth.json")),
-            ),
-            timeout_seconds=timeout_seconds,
-        )
-    except AuthConfigurationError as exc:
-        raise typer.BadParameter(str(exc)) from exc
-
-
 @app.command("token")
 def token_command(
     domain: DomainOption = None,
@@ -136,12 +115,16 @@ def token_command(
     auth_config_file: AuthConfigFileOption = None,
     timeout_seconds: TimeoutSecondsOption = 30,
 ) -> int:
-    auth_context = resolve_auth_context(
-        domain=domain,
-        auth_token=auth_token,
-        auth_config_file=auth_config_file,
-        timeout_seconds=timeout_seconds,
-    )
+    try:
+        auth_context = OfficeSpaceAuthContext.from_inputs(
+            domain=domain,
+            auth_token=auth_token,
+            auth_config_file=auth_config_file,
+            timeout_seconds=timeout_seconds,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
     token = auth_context.refresh_auth_token()
     auth_context.log_auth_token_status(token)
     auth_token_json = json.dumps({"authToken": token}, indent=2, sort_keys=True)
@@ -163,13 +146,17 @@ def register_command(
         if default_qr_image_path.exists():
             resolved_qr_image_file = str(default_qr_image_path)
 
-    auth_context = resolve_auth_context(
-        domain=domain,
-        auth_token=auth_token,
-        auth_config_file=auth_config_file,
-        timeout_seconds=timeout_seconds,
-        qr_image_file=resolved_qr_image_file,
-    )
+    try:
+        auth_context = OfficeSpaceAuthContext.from_inputs(
+            domain=domain,
+            auth_token=auth_token,
+            qr_image_file=resolved_qr_image_file,
+            auth_config_file=auth_config_file,
+            timeout_seconds=timeout_seconds,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
     token = auth_context.register_auth_token()
     auth_context.log_auth_token_status(token)
 
@@ -205,12 +192,16 @@ def book_command(
     if bool(check_in) != bool(check_out):
         raise typer.BadParameter("provide both --check-in and --check-out together")
 
-    auth_context = resolve_auth_context(
-        domain=domain,
-        auth_token=auth_token,
-        auth_config_file=auth_config_file,
-        timeout_seconds=timeout_seconds,
-    )
+    try:
+        auth_context = OfficeSpaceAuthContext.from_inputs(
+            domain=domain,
+            auth_token=auth_token,
+            auth_config_file=auth_config_file,
+            timeout_seconds=timeout_seconds,
+        )
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
     token = auth_context.refresh_auth_token()
     auth_context.log_auth_token_status(token)
     booker = OfficeSpaceDeskBooker(

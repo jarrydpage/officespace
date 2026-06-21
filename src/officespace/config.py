@@ -8,6 +8,7 @@ import tomllib
 from typing import Any
 
 from officespace.auth import AuthInputs
+from officespace.constants import DEFAULT_AUTH_CONFIG_FILE
 
 
 @dataclass(frozen=True)
@@ -72,8 +73,9 @@ def _load_auth_inputs(
 ) -> AuthInputs:
     auth_config_file = os.getenv(
         "OFFICESPACE_AUTH_CONFIG_FILE",
-        auth_config.get("auth_config_file", "auth.json"),
+        auth_config.get("auth_config_file", DEFAULT_AUTH_CONFIG_FILE),
     )
+    auth_config_file = auth_config_file or DEFAULT_AUTH_CONFIG_FILE
 
     auth_config_path = None
     if auth_config_file:
