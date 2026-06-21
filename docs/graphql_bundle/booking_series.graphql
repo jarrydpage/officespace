@@ -1,0 +1,13 @@
+query BookingSeries($id: ID!) {
+  seatBookingSeries(id: $id) {
+    id
+    pastBookings {
+      id
+      localCheckInTime
+      localCheckOutScheduled
+      localCheckOutTime
+      status
+      key
+    }
+  }
+}

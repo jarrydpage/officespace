@@ -1,0 +1,17 @@
+query SeatBookingFormSettings($siteId: ID) {
+  deskBookingSettings {
+    checkInEnabled
+  }
+  sites(ids: [$siteId]) {
+    id
+    deskBookingSettings {
+      checkInWindowEndAfter
+      checkInWindowStartBefore
+      limitOnePerDay
+      limitToOperatingHours
+      minimumDurationFullDay
+      recurrenceEnabled
+      deskLendingRestrictedTo
+    }
+  }
+}

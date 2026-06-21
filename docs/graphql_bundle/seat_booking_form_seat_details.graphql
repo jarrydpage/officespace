@@ -1,0 +1,85 @@
+query SeatBookingFormSeatDetails($id: ID!, $atTime: TimeZoneAgnosticDate) {
+  seats(ids: [$id], atTime: $atTime) {
+    id
+    assignmentMethod
+    canBookMyself
+    canBookOthers
+    canManageBookings
+    confirmable
+    deskBookableFrom
+    deskBookableUntil
+    deskLendingRule {
+      id
+      scheduleValues
+    }
+    deskLendingRuleEnabled
+    floorId
+    isPermitted
+    label
+    seatPermissionRestricted
+    seatPermissionType
+    timedIdentifier
+    type
+    activeAndUpcomingBookings {
+      id
+      localCheckInTime
+      localCheckOutScheduled
+    }
+    floor {
+      id
+      label
+    }
+    seatAvailability {
+      id
+      firstDayOfWeek
+      schedule
+      type
+    }
+    seatPermissionEmployees {
+      id
+      firstName
+      fullName
+      lastName
+    }
+    site {
+      id
+    }
+    shifts {
+      ...ShiftDetails
+    }
+    showBookedSoon
+  }
+}
+
+fragment ShiftDetails on Shift {
+  id
+  seatAvailability {
+    id
+    type
+    name
+    schedule
+    firstDayOfWeek
+  }
+  seatPermission {
+    id
+    type
+    allowedActiveEmployeesCount
+    employees {
+      id
+      active
+      photo
+      fullName
+      lastName
+      endDate
+      showInVd
+    }
+    occupancyPolicy {
+      id
+      name
+    }
+    department {
+      id
+      name
+    }
+  }
+}

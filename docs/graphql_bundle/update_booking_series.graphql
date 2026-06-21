@@ -1,0 +1,53 @@
+mutation UpdateBookingSeries($id: ID!, $baseBookingId: ID, $bookingKey: String, $note: String, $overlappingBookingsToVacate: [ID!], $schedule: [SeatBookingSeriesItemType!], $scope: String, $waiveConfirmation: Boolean) {
+  updateSeatBookingSeries(id: $id, baseBookingId: $baseBookingId, bookingKey: $bookingKey, note: $note, overlappingBookingsToVacate: $overlappingBookingsToVacate, schedule: $schedule, scope: $scope, waiveConfirmation: $waiveConfirmation) {
+    bookings {
+      id
+      canceledAt
+      canceledBy
+      checkInTime
+      checkOutBy
+      checkOutScheduled
+      checkOutTime
+      createdAt
+      employeeFirstName
+      employeeId
+      employeeLastName
+      key
+      localCheckInTime
+      localCheckOutScheduled
+      localTimeZone
+      seriesAllIndex
+      seriesId
+      seriesRemainingIndex
+      seriesRemainingSize
+      seriesSize
+      status
+      actions {
+        id
+        createdAt
+        message
+        name
+        performedBy
+      }
+      employee {
+        id
+        email
+        fullName
+      }
+      seriesRemainingBookings {
+        id
+        key
+        localCheckInTime
+        localCheckOutScheduled
+        seriesId
+        status
+      }
+    }
+    errors {
+      code
+      conflictingBookings
+      fieldName
+      message
+    }
+  }
+}

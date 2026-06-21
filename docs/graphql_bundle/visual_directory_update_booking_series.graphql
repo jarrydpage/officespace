@@ -1,0 +1,437 @@
+mutation VisualDirectoryUpdateBookingSeries($id: ID!, $atTime: TimeZoneAgnosticDate, $baseBookingId: ID, $bookingKey: String, $note: String, $overlappingBookingsToVacate: [ID!], $schedule: [SeatBookingSeriesItemType!], $scope: String, $seatId: ID!, $waiveConfirmation: Boolean) {
+  updateSeatBookingSeries(id: $id, baseBookingId: $baseBookingId, bookingKey: $bookingKey, note: $note, overlappingBookingsToVacate: $overlappingBookingsToVacate, schedule: $schedule, scope: $scope, waiveConfirmation: $waiveConfirmation) {
+    affectedSeats(atTime: $atTime) {
+      ...SeatInfo
+      ...VisualDirectoryFloorDataSeat
+      employee {
+        id
+        seatOpenBookings(seatIds: [$seatId]) {
+          id
+          isActive
+          localCheckInTime
+          localCheckOutScheduled
+        }
+      }
+    }
+    seriesMaster {
+      ...BookingInfo
+      employee {
+        id
+        fullName
+      }
+      seat(atTime: $atTime) {
+        ...SeatInfo
+        employee {
+          id
+          seatOpenBookings(atTime: $atTime, seatIds: [$seatId]) {
+            id
+            isActive
+            localCheckInTime
+            localCheckOutScheduled
+            timedIdentifier
+          }
+        }
+        seatPermissionEmployees {
+          id
+          seatOpenBookings(atTime: $atTime, seatIds: [$seatId]) {
+            id
+            checkInTime
+            isActive
+            localCheckInTime
+            localCheckOutScheduled
+            timedIdentifier
+          }
+        }
+      }
+    }
+    bookings {
+      id
+      checkInTime
+      checkOutScheduled
+      checkOutTime
+      key
+      localCheckInTime
+      localCheckOutScheduled
+    }
+    errors {
+      code
+      conflictingBookings
+      fieldName
+      message
+    }
+  }
+}
+
+fragment SeatAssetDetails on SeatAsset {
+  id
+  isSearchable
+  name
+}
+
+fragment ShiftDetails on Shift {
+  id
+  seatAvailability {
+    id
+    type
+    name
+    schedule
+    firstDayOfWeek
+  }
+  seatPermission {
+    id
+    type
+    allowedActiveEmployeesCount
+    employees {
+      id
+      active
+      photo
+      fullName
+      lastName
+      endDate
+      showInVd
+    }
+    occupancyPolicy {
+      id
+      name
+    }
+    department {
+      id
+      name
+    }
+  }
+}
+
+fragment ExplorerSeat on Seat {
+  assignmentMethod
+  floorId
+  iconNames {
+    visualDirectory
+  }
+  id
+  isInactive
+  roomId
+  sensorStatus
+  timedIdentifier
+  type
+  vacant
+  x
+  y
+  halo {
+    color
+    floorId
+    iconName
+    id
+    x
+    y
+  }
+}
+
+fragment VisualDirectoryLabelParts on LabelPart {
+  inactiveLabel
+  label
+  occupants
+  vacantLabel
+}
+
+fragment VisualDirectoryFloorDataSeatEmployee on Employee {
+  fullName
+  id
+  canReadEmployeeInfo
+  iconImage: photo(omitIfDisabledForVisualDirectory: true, style: round)
+}
+
+fragment VisualDirectoryFloorDataSeat on Seat {
+  ...ExplorerSeat
+  bookableByDeskLending
+  activeBooking {
+    id
+    concealEmployeeInfo
+    visitorDataAvailable
+    visit {
+      id
+      visitor {
+        id
+        photoUrl
+      }
+    }
+  }
+  concealBookings
+  hasInboundMove
+  label
+  labelParts(settings: VISUAL_DIRECTORY, withFreeAddressLabel: true, withFreeAddressStatus: true) {
+    ...VisualDirectoryLabelParts
+  }
+  employee {
+    ...VisualDirectoryFloorDataSeatEmployee
+  }
+  employees {
+    ...VisualDirectoryFloorDataSeatEmployee
+  }
+  restrictedEmployee {
+    ...VisualDirectoryFloorDataSeatEmployee
+  }
+  site {
+    id
+    deskBookingSettings {
+      deskLendingRestrictedTo
+    }
+  }
+  neighborhood {
+    id
+  }
+  designation {
+    id
+    displayName(settings: VISUAL_DIRECTORY)
+  }
+}
+
+fragment BookingInfo on SeatOpenBooking {
+  id
+  canceledAt
+  canceledBy
+  checkInTime
+  checkOutBy
+  checkOutScheduled
+  checkOutTime
+  createdAt
+  employeeFirstName
+  employeeId
+  employeeLastName
+  key
+  localCheckInTime
+  localCheckOutScheduled
+  localTimeZone
+  seriesAllIndex
+  seriesId
+  seriesRemainingIndex
+  seriesRemainingSize
+  seriesSize
+  status
+  actions {
+    id
+    createdAt
+    message
+    name
+    performedBy
+  }
+  employee {
+    id
+    email
+    fullName
+  }
+}
+
+fragment EmployeeResourceInfo on Employee {
+  department
+  email
+  fullName
+  id
+  lastName
+  photo
+  workPhone
+  detailFields {
+    href
+    iconName
+    label
+    name
+    type
+    value
+  }
+  slackUsers {
+    id
+    slackTeamId
+    slackUserId
+    isPresent
+  }
+}
+
+fragment InfoCardEmployeeExclusiveDesks on Employee {
+  id
+  exclusivelyAssignedDesks {
+    floorId
+    id
+    label
+    type
+    activeAndUpcomingBookings(limit: 1, scheduledOnly: true) {
+      checkInTime
+      id
+      isActive
+      localCheckInTime
+      localCheckOutScheduled
+    }
+    floor {
+      id
+      label
+    }
+    room {
+      id
+      construct
+      label
+    }
+    site {
+      id
+      name
+    }
+  }
+}
+
+fragment SeatInfo on Seat {
+  id
+  assignmentMethod
+  availabilityDescription
+  bookable
+  canBookMyself
+  canBookOthers
+  canManageBookings
+  concealBookings
+  confirmable
+  description
+  deskBookableFrom
+  deskBookableUntil
+  floorId
+  iconName: visualDirectoryIconName
+  inCube
+  isInactive
+  isOneToOneRestricted
+  isPermitted
+  label
+  seatAvailabilityId
+  seatPermissionRestricted
+  seatPermissionType
+  sensorStatus
+  shortDescription
+  type
+  utility
+  vacant
+  x
+  y
+  todaysBookings: activeAndUpcomingBookings(maxCheckInDays: 0, limit: 3) {
+    id
+    concealEmployeeInfo
+    localCheckInTime
+    localCheckOutScheduled
+    request {
+      id
+      status
+    }
+    employee {
+      id
+      fullName
+      photo
+    }
+    seat {
+      id
+      floorId
+    }
+  }
+  activeBooking {
+    id
+    canceledAt
+    canceledBy
+    checkInBy
+    checkInTime
+    checkOutBy
+    checkOutScheduled
+    checkOutTime
+    createdAt
+    employeeDepartment
+    employeeEmail
+    employeeFirstName
+    employeeId
+    employeeLastName
+    employeeTitle
+    floorId
+    isActive
+    isMine
+    localCheckInTime
+    localCheckOutScheduled
+    roomDesignation
+    seatId
+    seriesId
+    updatedAt
+    updatedBy
+    timedIdentifier
+    employee {
+      id
+      fullName
+      firstName
+      lastName
+    }
+    seriesRemainingBookings {
+      id
+    }
+  }
+  assets {
+    ...SeatAssetDetails
+  }
+  designation {
+    id
+    displayName(settings: VISUAL_DIRECTORY)
+  }
+  employee {
+    iconImage: photo(omitIfDisabledForVisualDirectory: true, style: round)
+    ...EmployeeResourceInfo
+    ...InfoCardEmployeeExclusiveDesks
+  }
+  floor {
+    id
+    label
+  }
+  halo {
+    id
+    color
+    floorId
+    iconName
+    x
+    y
+  }
+  iconNames {
+    visualDirectory
+  }
+  labelParts(settings: VISUAL_DIRECTORY, withFreeAddressLabel: true, withFreeAddressStatus: true) {
+    ...VisualDirectoryLabelParts
+  }
+  room {
+    id
+    construct
+    label
+    points
+    publicAttribute
+    attributes {
+      id
+      value
+      template {
+        id
+        name
+      }
+    }
+  }
+  seatAvailability {
+    id
+    firstDayOfWeek
+    name
+    schedule
+    type
+  }
+  seatPermissionEmployees {
+    ...EmployeeResourceInfo
+    ...InfoCardEmployeeExclusiveDesks
+  }
+  seatPermissionOccupancyPolicy {
+    id
+    name
+  }
+  site {
+    id
+    calendarStartDay
+    deskBookableUntil
+    name
+    timeZone
+    endsOfDay
+    operatingWeekDays
+    startsOfDay
+  }
+  shifts {
+    ...ShiftDetails
+  }
+}

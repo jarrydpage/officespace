@@ -1,0 +1,103 @@
+query CurrentUserActiveBookings($limit: Int!, $floorGroupId: ID!, $currentOnly: Boolean!, $includeCancelled: Boolean!) {
+  currentUser {
+    id
+    bookings: currentAndUpcomingBookings(floorGroupId: $floorGroupId, limit: $limit, currentOnly: $currentOnly, includeCancelled: $includeCancelled) {
+      ...RoomBookingHomeEvent
+      ...SeatOpenBookingHomeEvent
+    }
+  }
+}
+
+fragment RoomBookingHomeEvent on RoomBooking {
+  id
+  cancellationTime
+  confirmationEnd
+  confirmationStart
+  confirmedAt
+  endTime
+  isConfirmable
+  startTime
+  systemOwned
+  title
+  allDay
+  delegate {
+    id
+    fullName
+    isMe
+    linkedEmployee {
+      id
+      fullName
+    }
+  }
+  owner {
+    id
+    isMe
+    linkedEmployee {
+      id
+      fullName
+    }
+  }
+  room {
+    id
+    label
+    floor {
+      id
+      label
+      timeZone
+    }
+    images {
+      id
+      path(style: thumb)
+    }
+  }
+}
+
+fragment SeatOpenBookingHomeEvent on SeatOpenBooking {
+  id
+  cancellationTime
+  checkInTime
+  checkOutScheduled
+  confirmationEnd
+  confirmationStart
+  confirmationWarningMessage
+  confirmedAt
+  employeeId
+  isConfirmable
+  key
+  presenceCheckInRequired
+  delegate {
+    id
+    fullName
+    isMe
+    linkedEmployee {
+      id
+      fullName
+    }
+  }
+  employee {
+    id
+    fullName
+    isMe
+  }
+  seat {
+    id
+    label
+    floor {
+      id
+      label
+      timeZone
+    }
+    site {
+      id
+      mySafeguardCheckToday
+      safeguardForm {
+        id
+        preventBookingCheckIn
+      }
+    }
+  }
+  request {
+    id
+    status
+  }
+}

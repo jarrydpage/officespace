@@ -1,0 +1,35 @@
+query SeatBookingSuggestions($employeeId: ID!, $siteId: ID!, $schedule: [SeatBookingSeriesItemType!]!, $featureIds: [ID!], $floorGroupId: ID, $currentFloorId: ID, $assignedSeatsLimit: Int!, $previouslyBookedSeatsLimit: Int!) {
+  employees(ids: [$employeeId]) {
+    id
+    seatBookingSuggestions(siteId: $siteId, schedule: $schedule, featureIds: $featureIds, floorGroupId: $floorGroupId, currentFloorId: $currentFloorId) {
+      assignedSeats(limit: $assignedSeatsLimit) {
+        ...SeatBookingSuggestionsSeatDetails
+      }
+      previouslyBookedSeats(limit: $previouslyBookedSeatsLimit) {
+        ...SeatBookingSuggestionsSeatDetails
+      }
+    }
+  }
+}
+
+fragment SeatBookingSuggestionsSeatDetails on Seat {
+  id
+  assignmentMethod
+  canManageBookings
+  confirmable
+  floorId
+  label
+  floor {
+    id
+    label
+    site {
+      id
+      name
+      timeZone
+    }
+  }
+  latestCompletedBooking(employeeId: $employeeId) {
+    id
+    checkInTime
+  }
+}

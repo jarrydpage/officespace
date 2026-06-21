@@ -1,0 +1,35 @@
+query CommonDeskBookingSettings {
+  deskBookingSettings {
+    advanceBookingLimit
+    byRequestAutoDeclineMinutes
+    byRequestCutOffMinutes
+    byRequestWarningMinutes
+    checkInEnabled
+    checkInWindowEndAfter
+    checkInWindowStartBefore
+    confirmationEmailNotificationEnabled
+    confirmationMsTeamsNotificationEnabled
+    confirmationPushNotificationEnabled
+    confirmationSlackNotificationEnabled
+    limitOneAtATime
+    limitOnePerDay
+    limitToOperatingHours
+    minimumDurationFullDay
+    minutesBeforePushNotificationReminder
+    minutesBeforeReminder
+    nowConfirmationEmails
+    onBehalfNotificationRecipients
+    privacyToggleEnabled
+    pushNotificationReminderEnabled
+    recurrenceEnabled
+    reminderEnabled
+    removeAbandonedBookings
+    selfServiceCutOffMinutes
+    allowDeskLending
+    deskLendingAccessibleRoles
+    deskLendingFutureLimit
+    deskLendingEmailNotificationsRecipients
+    allowDeskLendingEmailReminders
+    deskLendingEmailNotificationsReminder
+  }
+}

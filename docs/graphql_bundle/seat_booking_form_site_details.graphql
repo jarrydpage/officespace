@@ -1,0 +1,16 @@
+query SeatBookingFormSiteDetails($id: ID) {
+  sites(ids: [$id]) {
+    id
+    calendarStartDay
+    canBookMyself
+    canBookOthers
+    deskBookableFrom
+    deskBookableUntil
+    endsOfDay
+    name
+    operatingWeekDays
+    presenceValidationEnabled
+    startsOfDay
+    timeZone
+  }
+}

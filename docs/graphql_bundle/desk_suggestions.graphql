@@ -1,0 +1,32 @@
+query DeskSuggestions($employeeId: ID!, $siteId: ID!, $schedule: [SeatBookingSeriesItemType!]!, $floorId: ID, $channel: String, $limit: Int) {
+  deskSuggestions(employeeId: $employeeId, siteId: $siteId, schedule: $schedule, floorId: $floorId, channel: $channel, limit: $limit) {
+    seat {
+      id
+      label
+      assignmentMethod
+      canManageBookings
+      confirmable
+      floorId
+      floor {
+        id
+        label
+        site {
+          id
+          name
+          timeZone
+        }
+      }
+    }
+    finalScore
+    matchReasons {
+      strategy
+      label
+    }
+    scoreBreakdown {
+      strategy
+      rawScore
+      weight
+      weightedScore
+    }
+  }
+}
