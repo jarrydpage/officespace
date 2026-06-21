@@ -6,9 +6,7 @@ from importlib.resources import files
 
 @lru_cache(maxsize=None)
 def load_query(name: str) -> str:
-    return files("officespace.graphql").joinpath(f"{name}.graphql").read_text(
-        encoding="utf-8"
-    ).strip()
+    return files(__package__).joinpath(f"{name}.graphql").read_text(encoding="utf-8").strip()
 
 
 CREATE_BOOKING_MUTATION = load_query("create_booking_series")

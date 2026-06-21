@@ -8,12 +8,12 @@ from pathlib import Path
 from typing import Any, Self
 from urllib import error, request
 
-from .constants import (
+from officespace.constants import (
     DEFAULT_USER_AGENT,
     MOBILE_QR_USER_AGENT,
 )
-from .qr import decode_qr_link_image_file, extract_qr_link_details
-from .tokens import (
+from officespace.utils.qr import decode_qr_link_image_file, extract_qr_link_details
+from officespace.utils.tokens import (
     decode_jwt_payload,
     token_is_expired,
     token_is_stale,

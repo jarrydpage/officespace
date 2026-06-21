@@ -7,7 +7,7 @@ from pathlib import Path
 import tomllib
 from typing import Any
 
-from .auth import AuthInputs
+from officespace.auth import AuthInputs
 
 
 @dataclass(frozen=True)

@@ -8,8 +8,8 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
 
-from .constants import OFFICESPACE_LOCAL_DATETIME_FORMAT
-from .helpers import day_index_for_date, parse_local_datetime
+from officespace.constants import OFFICESPACE_LOCAL_DATETIME_FORMAT
+from officespace.utils.helpers import day_index_for_date, parse_local_datetime
 
 
 class GraphQLModel(BaseModel):

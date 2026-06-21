@@ -7,8 +7,12 @@ from gql.graphql_request import GraphQLRequest
 from gql.transport.exceptions import TransportError, TransportQueryError, TransportServerError
 from gql.transport.requests import RequestsHTTPTransport
 
-from .auth import OfficeSpaceAuthContext
-from .models import GraphQLOperationEnvelope, GraphQLOperationError, graphql_errors_to_json
+from officespace.auth import OfficeSpaceAuthContext
+from officespace.graphql.models import (
+    GraphQLOperationEnvelope,
+    GraphQLOperationError,
+    graphql_errors_to_json,
+)
 
 
 GraphQLOperationResult = TypeVar("GraphQLOperationResult")

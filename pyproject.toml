@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "officespace"
+version = "0.1.0"
+description = "OfficeSpace booking automation and auth tooling"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "gql[requests]",
+    "pydantic",
+    "Pillow",
+    "pyzbar",
+    "typer",
+]
+
+[project.scripts]
+officespace = "officespace.cli.officespace:app"
+officespace-runner = "officespace.cli.runner:app"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"officespace.graphql" = ["*.graphql"]

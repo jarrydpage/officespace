@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from .constants import OFFICESPACE_LOCAL_DATETIME_FORMAT
+from officespace.constants import OFFICESPACE_LOCAL_DATETIME_FORMAT
 
 
 def parse_local_datetime(value: str | None) -> datetime | None:

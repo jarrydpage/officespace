@@ -21,9 +21,10 @@ variables:
 # values such as AZURE_SERVICE_CONNECTION, KEY_VAULT_NAME,
 # KEY_VAULT_AUTH_CONFIG_SECRET, and the OFFICESPACE_* booking/auth
 # overrides. The Azure service connection needs Key Vault secret get/list/set
-# access. The pipeline stores the full auth.json payload in Key Vault and
-# hydrates OFFICESPACE_AUTH_CONFIG_FILE from that secret before each run, so
-# the pipeline does not need run.toml.
+# access. The pipeline installs the local `officespace` package and invokes the
+# `officespace-runner` console script from that package. It stores the full
+# auth.json payload in Key Vault and hydrates OFFICESPACE_AUTH_CONFIG_FILE from
+# that secret before each run, so the pipeline does not need officespace.toml.
 - name: PYTHON_VERSION
   value: '3.12'
 - name: OFFICESPACE_MODE
@@ -50,7 +51,7 @@ steps:
     set -euo pipefail
 
     python -m pip install --upgrade pip
-    python -m pip install -r requirements.txt
+    python -m pip install -e .
   displayName: Install Python dependencies
 
 - task: AzureCLI@2
@@ -81,13 +82,13 @@ steps:
 - bash: |
     set -euo pipefail
 
-    python run.py
+    officespace-runner
 
     if [[ ! -s "$OFFICESPACE_AUTH_CONFIG_FILE" ]]; then
       echo "Auth config file $OFFICESPACE_AUTH_CONFIG_FILE was not written." >&2
       exit 1
     fi
-  displayName: Run OfficeSpace booking script
+  displayName: Run officespace-runner
 
 - task: AzureCLI@2
   displayName: Upload OfficeSpace auth.json to Key Vault

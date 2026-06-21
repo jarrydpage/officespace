@@ -4,11 +4,10 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
-from .auth import OfficeSpaceAuthContext
-from .client import OfficeSpaceClient
-from .constants import DAY_NAME_TO_INDEX
-from .helpers import day_index_for_date
-from .models import (
+from officespace.auth import OfficeSpaceAuthContext
+from officespace.client import OfficeSpaceClient
+from officespace.constants import DAY_NAME_TO_INDEX
+from officespace.graphql.models import (
     CurrentUserBookings,
     CurrentUserEmployee,
     PreparedBookingRequest,
@@ -16,13 +15,14 @@ from .models import (
     SeatSiteDetails,
     SiteBookingWindow,
 )
-from .queries import (
+from officespace.graphql.queries import (
     CREATE_BOOKING_MUTATION,
     CURRENT_USER_QUERY,
     MY_BOOKINGS_QUERY,
     SEAT_SITE_QUERY,
     SITE_BOOKING_WINDOW_QUERY,
 )
+from officespace.utils.helpers import day_index_for_date
 
 
 logger = logging.getLogger(__name__)

@@ -1,9 +1,15 @@
-# OfficeSpace Automate
+# OfficeSpace
 
 This repo uses two files:
 
 - `auth.json` for cached OfficeSpace auth state
-- `run.toml` for booking config
+- `officespace.toml` for booking config
+
+The Python package now lives under `src/officespace`.
+Installing the repo exposes two console scripts:
+
+- `officespace` for the multi-command auth and manual booking CLI
+- `officespace-runner` for the env/config-driven booking run
 
 `auth.json` stores the current `authToken`, the resolved `domain`, and token metadata such as `exp`, `iat`, and `sub`.
 
@@ -12,14 +18,14 @@ This repo uses two files:
 Registration is manual and CLI-only:
 
 ```bash
-python -m officespace register --auth-config-file auth.json
+officespace register --auth-config-file auth.json
 ```
 
 That command reads the OfficeSpace QR PNG, exchanges the registration token, and writes `auth.json`.
 
-`python run.py` does not register. It only runs the booking flow:
+`officespace-runner` does not register. It only runs the booking flow:
 
-1. Loads `run.toml` when present, with `OFFICESPACE_*` environment variables overriding file values.
+1. Loads `officespace.toml` when present, with `OFFICESPACE_*` environment variables overriding file values.
 2. Builds an auth context from `auth.json` or `OFFICESPACE_AUTH_TOKEN`.
 3. Refreshes the auth token if needed.
 4. Prepares the booking request.
@@ -28,13 +34,13 @@ That command reads the OfficeSpace QR PNG, exchanges the registration token, and
 Default behavior:
 
 ```bash
-python run.py
+officespace-runner
 ```
 
 Send the booking request:
 
 ```bash
-OFFICESPACE_MODE=book python run.py
+OFFICESPACE_MODE=book officespace-runner
 ```
 
 ## Local Setup
@@ -45,8 +51,11 @@ Install dependencies:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
+
+That installs the local `officespace` package and makes both `officespace`
+and `officespace-runner` available on your shell path.
 
 If local registration cannot load `pyzbar`, install the `zbar` system library for your platform before running registration.
 
@@ -56,7 +65,7 @@ For registration, use either:
 - `--qr-image-file /path/to/qr.png`
 - `OFFICESPACE_QR_IMAGE_FILE=/path/to/qr.png`
 
-Example `run.toml`:
+Example `officespace.toml`:
 
 ```toml
 [auth]
@@ -68,7 +77,7 @@ seat_id = "14869"
 schedule = ["monday", "tuesday", "wednesday", "thursday"]
 ```
 
-Equivalent environment variables can be used instead of creating `run.toml`.
+Equivalent environment variables can be used instead of creating `officespace.toml`.
 For pipeline use, set `OFFICESPACE_FLOOR_ID`, `OFFICESPACE_SEAT_ID`, and exactly
 one of `OFFICESPACE_BOOKING_DATE` or `OFFICESPACE_SCHEDULE`.
 `OFFICESPACE_SCHEDULE` uses a JSON array value such as
@@ -77,13 +86,13 @@ one of `OFFICESPACE_BOOKING_DATE` or `OFFICESPACE_SCHEDULE`.
 Generate or refresh `auth.json`:
 
 ```bash
-python -m officespace register --auth-config-file auth.json
+officespace register --auth-config-file auth.json
 ```
 
 Or with an explicit QR path:
 
 ```bash
-python -m officespace register \
+officespace register \
   --auth-config-file auth.json \
   --qr-image-file /path/to/qr.png
 ```
@@ -91,7 +100,7 @@ python -m officespace register \
 Print the current auth token:
 
 ```bash
-python -m officespace token --auth-config-file auth.json
+officespace token --auth-config-file auth.json
 ```
 
 ## Pipeline Flow
@@ -99,8 +108,9 @@ python -m officespace token --auth-config-file auth.json
 The pipeline stores the full `auth.json` payload in the Azure Key Vault secret
 named by `KEY_VAULT_AUTH_CONFIG_SECRET`.
 The Azure Pipelines variable group `shared-officespace-prod` provides the Azure
-connection settings plus the OfficeSpace booking configuration, so the pipeline
-does not need a committed or generated `run.toml`.
+connection settings plus the OfficeSpace booking configuration. The pipeline
+installs the local `officespace` package and runs the `officespace-runner`
+console script, so it does not need a committed or generated `officespace.toml`.
 
 See `VARIABLES.md` for the full variable-group contract.
 
@@ -117,8 +127,9 @@ See `VARIABLES.md` for the full variable-group contract.
 Current job flow:
 
 1. Download `auth.json` from Key Vault into `$(Agent.TempDirectory)/officespace-auth.json`.
-2. Run `python run.py`.
-3. Upload the resulting `auth.json` back to the same Key Vault secret.
+2. Install the local `officespace` package.
+3. Run `officespace-runner`.
+4. Upload the resulting `auth.json` back to the same Key Vault secret.
 
 The pipeline fails if the Key Vault secret does not already exist.
 
