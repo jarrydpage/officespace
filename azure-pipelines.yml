@@ -15,18 +15,17 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-# Replace these with your Azure resource names.
-# The Azure service connection needs Key Vault secret get/list/set access.
-# The pipeline stores the full auth.json payload in Key Vault and hydrates
-# OFFICESPACE_AUTH_CONFIG_FILE from that secret before each run.
+- group: shared-officespace-prod
+
+# The shared-officespace-prod variable group supplies environment-specific
+# values such as AZURE_SERVICE_CONNECTION, KEY_VAULT_NAME,
+# KEY_VAULT_AUTH_CONFIG_SECRET, and the OFFICESPACE_* booking/auth
+# overrides. The Azure service connection needs Key Vault secret get/list/set
+# access. The pipeline stores the full auth.json payload in Key Vault and
+# hydrates OFFICESPACE_AUTH_CONFIG_FILE from that secret before each run, so
+# the pipeline does not need run.toml.
 - name: PYTHON_VERSION
   value: '3.12'
-- name: AZURE_SERVICE_CONNECTION
-  value: arm-coreservices-prod
-- name: KEY_VAULT_NAME
-  value: zaekvpcs0001
-- name: AUTH_CONFIG_SECRET_NAME
-  value: officespace-auth-json
 - name: OFFICESPACE_MODE
   value: book
 - name: OFFICESPACE_AUTH_CONFIG_FILE
@@ -65,7 +64,7 @@ steps:
 
       auth_config_secret_id="$(az keyvault secret show \
         --vault-name "$KEY_VAULT_NAME" \
-        --name "$AUTH_CONFIG_SECRET_NAME" \
+        --name "$KEY_VAULT_AUTH_CONFIG_SECRET" \
         --query id \
         -o tsv 2>/dev/null || true)"
 
@@ -75,7 +74,7 @@ steps:
           --query value \
           -o tsv > "$OFFICESPACE_AUTH_CONFIG_FILE"
       else
-        echo "Key Vault secret $AUTH_CONFIG_SECRET_NAME was not found in $KEY_VAULT_NAME." >&2
+        echo "Key Vault secret $KEY_VAULT_AUTH_CONFIG_SECRET was not found in $KEY_VAULT_NAME." >&2
         exit 1
       fi
 
@@ -101,7 +100,7 @@ steps:
 
       az keyvault secret set \
         --vault-name "$KEY_VAULT_NAME" \
-        --name "$AUTH_CONFIG_SECRET_NAME" \
+        --name "$KEY_VAULT_AUTH_CONFIG_SECRET" \
         --file "$OFFICESPACE_AUTH_CONFIG_FILE" \
         --only-show-errors \
         1>/dev/null

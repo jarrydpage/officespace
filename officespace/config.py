@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,12 +26,17 @@ class RunConfig:
     booking: BookingConfig
 
     @classmethod
-    def load(cls, config_path: str | Path) -> RunConfig:
+    def load(
+        cls,
+        config_path: str | Path,
+    ) -> RunConfig:
         resolved_config_path = Path(config_path).expanduser()
         try:
             raw_config = tomllib.loads(
                 resolved_config_path.read_text(encoding="utf-8")
             ) or {}
+        except FileNotFoundError:
+            raw_config = {}
         except OSError as exc:
             raise RunConfigurationError(
                 f"Unable to read config file {resolved_config_path}: {exc}"
@@ -48,6 +54,15 @@ class RunConfig:
 
 class RunConfigurationError(ValueError):
     pass
+
+
+def _env_string(name: str, fallback: Any = None) -> Any:
+    value = os.getenv(name)
+    if value is None:
+        return fallback
+
+    stripped = value.strip()
+    return stripped or None
 
 
 def _load_auth_inputs(
@@ -111,38 +126,69 @@ def parse_run_config(
     if not isinstance(booking_config, dict):
         raise RunConfigurationError("booking must be a mapping.")
 
-    booking_date = booking_config.get("booking_date")
+    booking_date = _env_string(
+        "OFFICESPACE_BOOKING_DATE",
+        booking_config.get("booking_date"),
+    )
+
     schedule = booking_config.get("schedule")
+    env_schedule = _env_string("OFFICESPACE_SCHEDULE")
+    if env_schedule is not None:
+        error_message = (
+            'OFFICESPACE_SCHEDULE must be a JSON array such as ["monday", "tuesday"].'
+        )
+        try:
+            schedule = json.loads(env_schedule)
+        except json.JSONDecodeError as exc:
+            raise RunConfigurationError(error_message) from exc
+        if not isinstance(schedule, list):
+            raise RunConfigurationError(error_message)
 
     if schedule is not None and not isinstance(schedule, list):
         raise RunConfigurationError("booking.schedule must be a list when provided.")
+
+    if schedule is not None:
+        normalized_schedule = []
+        for entry in schedule:
+            normalized_entry = str(entry).strip()
+            if normalized_entry:
+                normalized_schedule.append(normalized_entry)
+        schedule = normalized_schedule or None
 
     if bool(booking_date) == bool(schedule):
         raise RunConfigurationError(
             "Set exactly one of booking.booking_date or booking.schedule."
         )
 
-    floor_id = booking_config.get("floor_id")
-    seat_id = booking_config.get("seat_id")
+    floor_id = _env_string("OFFICESPACE_FLOOR_ID", booking_config.get("floor_id"))
+    seat_id = _env_string("OFFICESPACE_SEAT_ID", booking_config.get("seat_id"))
     if floor_id is None or seat_id is None:
         raise RunConfigurationError("booking.floor_id and booking.seat_id are required.")
 
-    site_id = booking_config.get("site_id")
+    site_id = _env_string("OFFICESPACE_SITE_ID", booking_config.get("site_id"))
     resolved_site_id = None
     if site_id is not None:
         resolved_site_id = str(site_id)
 
-    resolved_schedule = None
-    if schedule is not None:
-        resolved_schedule = [str(entry) for entry in schedule]
+    employee_id = _env_string(
+        "OFFICESPACE_EMPLOYEE_ID",
+        booking_config.get("employee_id"),
+    )
+    resolved_employee_id = None
+    if employee_id is not None:
+        resolved_employee_id = str(employee_id)
+
+    resolved_booking_date = None
+    if booking_date is not None:
+        resolved_booking_date = str(booking_date)
 
     booking = BookingConfig(
-        employee_id=booking_config.get("employee_id"),
+        employee_id=resolved_employee_id,
         site_id=resolved_site_id,
         floor_id=str(floor_id),
         seat_id=str(seat_id),
-        booking_date=booking_date,
-        schedule=resolved_schedule,
+        booking_date=resolved_booking_date,
+        schedule=schedule,
     )
 
     return RunConfig(
