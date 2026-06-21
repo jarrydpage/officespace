@@ -145,24 +145,6 @@ def resolve_auth_context(auth: CliAuthOptions) -> OfficeSpaceAuthContext:
         raise typer.BadParameter(str(exc)) from exc
 
 
-def resolve_booker(
-    auth: CliAuthOptions,
-    *,
-    floor_id: str,
-    seat_id: str,
-    site_id: str | None = None,
-) -> OfficeSpaceDeskBooker:
-    auth_context = resolve_auth_context(auth)
-    token = auth_context.refresh_auth_token()
-    auth_context.log_auth_token_status(token)
-    return OfficeSpaceDeskBooker(
-        auth_context=auth_context,
-        floor_id=floor_id,
-        seat_id=seat_id,
-        site_id=site_id,
-    )
-
-
 @app.command("token")
 def token_command(
     domain: DomainOption = None,
@@ -251,8 +233,11 @@ def book_command(
         auth_config_file=auth_config_file,
         timeout_seconds=timeout_seconds,
     )
-    booker = resolve_booker(
-        auth,
+    auth_context = resolve_auth_context(auth)
+    token = auth_context.refresh_auth_token()
+    auth_context.log_auth_token_status(token)
+    booker = OfficeSpaceDeskBooker(
+        auth_context=auth_context,
         floor_id=floor_id,
         seat_id=seat_id,
         site_id=site_id,
